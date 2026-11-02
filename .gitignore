@@ -2,3 +2,4 @@
 *.log
 .DS_Store
 _test*.html
+tools/.shots/

@@ -1,0 +1,12 @@
+{
+  "name": "shardlings",
+  "private": true,
+  "scripts": {
+    "test": "node tests/logic.test.js",
+    "smoke": "node tools/smoke.js",
+    "tempo": "node tools/tempo-sim.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.50.0"
+  }
+}
