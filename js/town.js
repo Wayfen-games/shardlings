@@ -23,6 +23,22 @@ function renderTown() {
     const rows = [];
     for (let t = B_.MAX_TIER; t >= 1; t--) ELS.forEach(el => { const n = G.souls[el + t] || 0; if (n > 0) rows.push(`<div class="soulrow"><span class="gem" style="--c:${COL[el]}">${ELN[el]} ${t}단계</span><span>${n} / ${B_.SOULS_PER_SUMMON}</span><button class="ghost" style="width:auto" type="button" data-act="summon" data-el="${el}" data-t="${t}" ${n < B_.SOULS_PER_SUMMON ? 'disabled' : ''}>${n < B_.SOULS_PER_SUMMON ? '부족' : '소환'}</button></div>`); });
     body.innerHTML = `<h3>소울 ${B_.SOULS_PER_SUMMON}개로 소환</h3><p>그 단계 개체 중 무엇이 나올지 몰라요. 레벨은 개체마다 정해진 기본 레벨로 나와요.</p>${rows.join('') || '<p>아직 소울이 없어요. 사냥하면 쌓여요.</p>'}`;
+  } else if (tab === 'fight') {
+    const now = Date.now(), d = SH.dungeonToday(st, now), el = SH.weekdayEl(now), B = B_, top = Math.min(B.MAX_TIER, Math.max(...G.roster.map(m => m.tier)) + 1);
+    const chips = ELS.map(e => `<button class="chip ${st.pickEls.includes(e) ? 'on' : ''}" type="button" data-act="pickel" data-el="${e}">${ELN[e]}</button>`).join('');
+    const row = (label, note, btns) => `<div class="fightrow"><span>${label}<small>${note}</small></span>${btns}</div>`;
+    const btn = (act, kind, t, text, on) => `<button class="ghost" type="button" data-act="${act}" data-k="${kind}" data-t="${t}" ${on ? '' : 'disabled'}>${text}</button>`;
+    let h = `<h3>요일 던전 ${d.used} / ${B.DUNGEON_DAILY}판</h3><p>오늘은 ${el ? ELN[el] + ' 속성이에요' : '주말이라 아래에서 3속성을 고를 수 있어요'}. 이겼을 때만 횟수가 줄고 보상은 사냥의 ${B.DUNGEON_RUNS}배예요.</p>`;
+    for (let t = 1; t <= top; t++) { const open = SH.dungeonUnlocked(st, t, now), can = SH.canDungeon(st, t, now) && (el || SH.validEls(st.pickEls)); h += row(`${t}단계`, open ? (d.cleared[t] ? '깬 적 있음' : '처음 도전') : '전 단계를 먼저', btn('fight', 'daily', t, '도전', can) + btn('sweep', 'daily', t, '소탕', can && d.cleared[t])); }
+    h += `<h3>입장권 던전</h3><p>사냥 중 가끔 나오는 입장권으로 들어가요. 서로 다른 3속성을 고르세요.</p><div class="chips">${chips}</div>`;
+    let any = false;
+    for (let t = 1; t <= B.MAX_TIER; t++) { const n = st.tickets[t] || 0; if (!n) continue; any = true; const can = SH.validEls(st.pickEls); h += row(`${t}단계 입장권 ${n}장`, d.ticketCleared[t] ? '깬 적 있음' : '처음 도전', btn('fight', 'ticket', t, '도전', can) + btn('sweep', 'ticket', t, '소탕', can && d.ticketCleared[t])); }
+    if (!any) h += '<p>아직 입장권이 없어요.</p>';
+    h += `<h3>레인보우 샤들링 ${d.boss} / ${B.BOSS_DAILY}번</h3><p>던전에서 드물게 나오는 입장권 전용 보스. 이기면 한 단계 위 사냥의 ${B.BOSS_RUNS}배 보상이에요.</p>`;
+    any = false;
+    for (let t = 1; t <= B.MAX_TIER; t++) { const n = st.bossTickets[t] || 0; if (!n) continue; any = true; h += row(`${t}단계 입장권 ${n}장`, '예고를 보고 보호막', btn('fight', 'boss', t, '도전', SH.canBoss(st, t, now)) + '<span></span>'); }
+    if (!any) h += '<p>아직 입장권이 없어요.</p>';
+    body.innerHTML = h;
   } else if (tab === 'isle') {
     let h = '<h3>어느 섬으로 갈까요</h3><div class="grid2">';
     for (let s = 1; s <= G.maxStage; s++) h += `<button class="card ${s === G.stage ? 'on' : ''}" type="button" data-act="isle" data-s="${s}"><span>${s}번 섬 · ${MAPS[(s - 1) % MAPS.length].name}</span><small>${SH.islandMobs(s).map(e => ELN[e]).join('·')} ${s}단계 소울${st.cleared[s] ? ' · 정복' : ''}</small></button>`;
@@ -109,13 +125,28 @@ function depart() {
   if (G.needNewMap) { G.needNewMap = false; loadMap(); banner(`${G.stage}번 섬<small>${MAPS[G.map].name}</small>`, 1500); }
   saveGame();
 }
+function rewardText(r) {
+  const souls = Object.keys(r.souls).sort().map(k => `${ELN[k.slice(0, -1)]} ${k.slice(-1)}단계 ${r.souls[k]}개`).join(', ') || '소울 없음';
+  return `${souls}, ${goldText(r.gold)} G.${r.bossTicket ? ' 레인보우 입장권도 나왔어요!' : ''}`;
+}
+function showReward(title, r) {
+  paint($('revealArt'), SH.getMon(G.st, G.partyIds[0]), { big:true }); $('revealArt').className = 'pop';
+  $('revealTitle').textContent = title; $('revealText').textContent = rewardText(r);
+  $('revealOk').textContent = '받기'; $('revealOk').hidden = false; $('reveal').hidden = false;
+  fan(r.bossTicket ? [659, 784, 988, 1319, 1568] : [523, 659, 784, 1047], .08);
+}
+function showFightLost() {
+  paint($('revealArt'), SH.getMon(G.st, G.partyIds[0]), { big:true, sil:true }); $('revealArt').className = '';
+  $('revealTitle').textContent = '졌어요'; $('revealText').textContent = '입장권과 횟수는 그대로예요. 더 키우거나 일행을 바꿔 다시 도전해 보세요.';
+  $('revealOk').textContent = '돌아가기'; $('revealOk').hidden = false; $('reveal').hidden = false;
+}
 function showOffline(r) {
   const hours = r.sec >= 3600 ? `${(r.sec / 3600).toFixed(1)}시간` : `${Math.round(r.sec / 60)}분`;
   const souls = Object.keys(r.souls).map(k => `${ELN[k.slice(0, -1)]} ${k.slice(-1)}단계 ${r.souls[k]}개`).join(', ') || '소울 없음';
   const lv = r.levels.map(l => `${l.name} Lv ${l.from}→${l.to}`).join(', ');
   paint($('revealArt'), SH.getMon(G.st, G.partyIds[0]), { big:true }); $('revealArt').className = '';
   $('revealTitle').textContent = '다녀오셨어요!';
-  $('revealText').textContent = `${hours} 동안 ${r.kills}마리 사냥. ${souls}, ${goldText(r.gold)} G.${lv ? ' ' + lv + '.' : ''}`;
+  $('revealText').textContent = `${hours} 동안 ${r.kills}마리 사냥. ${souls}, ${goldText(r.gold)} G.${r.tickets ? ` 입장권 ${r.tickets}장.` : ''}${lv ? ' ' + lv + '.' : ''}`;
   $('revealOk').textContent = '받기'; $('revealOk').hidden = false; $('reveal').hidden = false;
 }
 $('town').addEventListener('click', e => {
@@ -129,6 +160,13 @@ $('town').addEventListener('click', e => {
   if (a === 'sub') { pick.sub = id; renderTown(); }
   if (a === 'souls') { pick.souls = Math.max(1, Math.min(B_.FUSE_SOUL_MAX, pick.souls + +t.dataset.d)); renderTown(); }
   if (a === 'fuse') fuseNow();
+  if (a === 'fight') startFight(t.dataset.k, +t.dataset.t);
+  if (a === 'sweep') {
+    const k = t.dataset.k, n = +t.dataset.t, r = k === 'daily' ? SH.winDungeon(G.st, n, Date.now(), Math.random) : SH.winTicketDungeon(G.st, n, Date.now(), Math.random);
+    if (!r.error) { saveGame(); showReward('소탕 완료', r); }
+    renderTown();
+  }
+  if (a === 'pickel') { const e = t.dataset.el, p = G.st.pickEls; if (p.includes(e)) p.splice(p.indexOf(e), 1); else if (p.length < B_.TICKET_SET_SIZE) p.push(e); renderTown(); }
   if (a === 'summon') doSummon(t.dataset.el, +t.dataset.t);
   if (a === 'isle') { const s = +t.dataset.s; if (s !== G.stage) { G.stage = s; G.needNewMap = true; } renderTown(); }
   if (a === 'reset') { if (resetArmed) resetGame(); else { resetArmed = true; renderTown(); } }

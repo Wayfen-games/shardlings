@@ -188,7 +188,7 @@ const G = {
 // 저장되는 값은 G.st에 있다
 ['stage', 'maxStage', 'gold', 'roster', 'partyIds', 'souls', 'dex'].forEach(k => Object.defineProperty(G, k, { get() { return G.st[k]; }, set(v) { G.st[k] = v; } }));
 const isCleared = () => !!G.st.cleared[G.stage];
-const es = () => Math.pow(SH.B.ISLAND_STAT, G.stage - 1);
+const es = () => Math.pow(SH.B.ISLAND_STAT, (G.fight ? G.fight.tier : G.stage) - 1);
 const statMult = SH.statMult;
 function makeUnit(m) {
   const d = SHAPE[m.shape], hp = d.hp * statMult(m);
@@ -259,8 +259,10 @@ function kill(e) {
   burst(e.x, e.y - 5, COL[e.el], 12, 55);
   burst(e.x, e.y - 5, '#ffffff', 4, 30);
   blip('kill', 240, .1, 'triangle', .06, -140);
+  if (G.fight) return;
   const r = SH.grantKill(G.st, G.stage, e.el, e.elite, Math.random);
   r.drops.forEach(d => { dropOrb(e.x, e.y - 6, d.el, d.tier); if (d.tier >= Math.max(3, G.stage)) rareDrop(d); });
+  if (r.ticket) { banner(`입장권!<small>${G.stage}단계 던전 입장권</small>`, 1300); fan([988, 1319]); }
   showLevelUps(r.ups);
   if (G.phase === 'hunt' && !G.stress && !isCleared()) { G.kills++; if (G.kills >= G.need) startWarn(); }
 }
@@ -288,6 +290,12 @@ function spawnBoss() {
   G.phase = 'boss'; shake(5); burst(pos.x, pos.y - 10, '#ffffff', 40, 90, .8); blip('boss', 90, .5, 'sawtooth', .07, 60);
 }
 function killBoss(b) {
+  if (G.fight) {
+    G.boss = null; G.shots = []; shake(7);
+    for (let i = 0; i < 5; i++) burst(b.x + rnd(-14, 14), b.y - 16 + rnd(-14, 14), `hsl(${i * 72} 90% 70%)`, 22, 110, 1);
+    finishFight(true);
+    return;
+  }
   G.boss = null; G.phase = 'clear'; G.phaseT = 4; G.slowT = 1.1; G.shots = [];
   for (let i = 0; i < 5; i++) burst(b.x + rnd(-14, 14), b.y - 16 + rnd(-14, 14), `hsl(${i * 72} 90% 70%)`, 22, 110, 1);
   const rb = SH.grantBoss(G.st, G.stage, Math.random);
@@ -374,6 +382,7 @@ function update(dt) {
     if (G.spawnT <= 0 && G.enemies.length < cap) { spawn(); G.spawnT = G.stress > 0 ? .03 : SH.B.SPAWN_EVERY; }
   }
   if (G.stress > 0) { G.stress -= dt; if (G.stress <= 0) endStress(); }
+  if (G.fight && !G.fightEnding) checkFight();
   if (G.phase === 'warn') { G.phaseT -= dt; if (G.phaseT <= 0) spawnBoss(); }
   if (G.phase === 'clear') { G.phaseT -= dt; if (G.phaseT <= 0 && !G.nextPending) nextIsland(); }
   // 샤들링
@@ -617,7 +626,8 @@ const cdBox = { skCheer:['cdCheer', 14], skHeal:['cdHeal', 12], skShield:['cdShi
 let lastHud = 0;
 function hud() {
   const b = G.boss;
-  if (b) { $('gauge').style.width = clamp(b.hp / b.maxHp, 0, 1) * 100 + '%'; $('gaugeTxt').textContent = `보스 조각왕 ${Math.ceil(b.hp)}`; }
+  if (b) { $('gauge').style.width = clamp(b.hp / b.maxHp, 0, 1) * 100 + '%'; $('gaugeTxt').textContent = `${G.fight ? '레인보우 샤들링' : '보스 조각왕'} ${Math.ceil(b.hp)}`; }
+  else if (G.fight) { $('gauge').style.width = G.enemies.length / G.fight.total * 100 + '%'; $('gaugeTxt').textContent = `던전 남은 적 ${G.enemies.length}`; }
   else if (G.phase === 'warn') { $('gauge').style.width = '100%'; $('gaugeTxt').textContent = '보스 출현'; }
   else if (G.phase === 'clear') { $('gauge').style.width = '0%'; $('gaugeTxt').textContent = '정복 완료'; }
   else if (isCleared()) { $('gauge').style.width = '100%'; $('gaugeTxt').textContent = '정복한 섬'; }
@@ -630,6 +640,48 @@ function hud() {
 }
 
 function endStress() { G.enemies.splice(11); }
+
+// 도전: 던전과 레인보우 샤들링. 지면 입장권과 횟수는 그대로 [사용자]
+function startFight(kind, tier) {
+  $('town').hidden = true; G.paused = false;
+  syncParty();
+  if (G.needNewMap) { G.needNewMap = false; loadMap(); }
+  G.enemies = []; G.shots = []; G.boss = null; G.cmd = null; G.fightEnding = false;
+  G.party.forEach(u => { u.down = 0; u.hp = u.maxHp = SHAPE[u.shape].hp * statMult(u.mon); u.target = null; });
+  G.cdHeal = 0; G.cdShield = 0; G.cdCheer = 0;
+  const now = Date.now();
+  const els = kind === 'daily' ? SH.dungeonEls(G.st, now) : G.st.pickEls;
+  G.fight = { kind, tier, total:3 };
+  $('gaugeBar').classList.add('boss');
+  if (kind === 'boss') { spawnBoss(); banner(`${tier}단계 레인보우 샤들링<small>빨간 원이 뜨면 보호막을 누르세요</small>`, 1800); return; }
+  G.phase = 'fight';
+  for (let i = 0; i < 3; i++) {
+    spawn();
+    const e = G.enemies[G.enemies.length - 1], pos = randLandNear(G.hero, 50, 80);
+    e.el = els[i % els.length]; e.x = pos.x; e.y = pos.y; e.elite = true;
+    e.hp = e.maxHp = SH.B.ENEMY_HP * es() * SH.B.DUNGEON_HP; e.atk = SH.B.ENEMY_ATK * es() * SH.B.DUNGEON_ATK;
+  }
+  banner(`${tier}단계 던전<small>셋을 모두 쓰러뜨리세요</small>`, 1400);
+}
+function checkFight() {
+  if (G.party.every(u => u.down > 0)) { finishFight(false); return; }
+  if (G.fight.kind !== 'boss' && !G.enemies.length) finishFight(true);
+}
+function finishFight(win, quit) {
+  const f = G.fight; if (!f || G.fightEnding) return;
+  G.fightEnding = true;
+  const done = () => {
+    G.fight = null; G.fightEnding = false; G.enemies = []; G.shots = []; G.boss = null; G.phase = 'hunt';
+    $('gaugeBar').classList.remove('boss');
+    let r = null;
+    if (win) r = f.kind === 'boss' ? SH.winBoss(G.st, f.tier, Date.now(), Math.random) : f.kind === 'daily' ? SH.winDungeon(G.st, f.tier, Date.now(), Math.random) : SH.winTicketDungeon(G.st, f.tier, Date.now(), Math.random);
+    saveGame();
+    openTown('fight');
+    if (win && r && !r.error) showReward(f.kind === 'boss' ? '레인보우 샤들링 격파!' : '던전 승리!', r);
+    else if (!quit) showFightLost();
+  };
+  if (quit) done(); else setTimeout(done, win ? 900 : 700);
+}
 
 // ---------- 입력 ----------
 cv.addEventListener('pointerdown', e => {
@@ -645,6 +697,7 @@ $('sound').onclick = () => { audio(); G.muted = !G.muted; $('sound').textContent
 $('toTown').onclick = () => {
   audio();
   if (G.phase === 'clear') return;
+  if (G.fight) { finishFight(false, true); return; }
   if (G.phase !== 'hunt') { // 보스를 두고 돌아오면, 다시 나갔을 때 적 하나를 더 잡으면 보스가 처음부터 나온다
     G.boss = null; G.shots = []; G.phase = 'hunt'; G.kills = G.need - 1; G.party.forEach(u => { u.target = null; });
     $('gaugeBar').classList.remove('boss');

@@ -66,6 +66,34 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'OK ' : 'NG '} ${n
   const s2 = await p.evaluate(() => { const { G, update, draw, hud } = window.__sh; G.paused = true; for (let i = 0; i < 30 * 30; i++) update(1 / 30); draw(); hud(); return { stage:G.stage, party:G.party.map(u => [u.mon.name, u.mon.tier, u.mon.level]), els:[...new Set(G.enemies.map(e => e.el))], cam:isFinite(G.cam.x) }; });
   check('2번 섬 출발', s2.stage === 2 && s2.cam, JSON.stringify(s2)); await shot('5_island2');
 
+  // 던전과 보스: 기준 파티(1단계 3마리 Lv 13)로 승패와 시간을 잰다
+  const fightRun = (kind, tier, smart) => p.evaluate(([kind, tier, smart]) => {
+    const { G, update, skill, SH } = window.__sh;
+    G.roster.slice(0, 3).forEach(m => { m.level = SH.B.FUSE_LEVEL[m.tier - 1]; });
+    G.st.bossTickets[tier] = 1; G.st.tickets[tier] = 1;
+    startFight(kind, tier); G.paused = true;
+    const t0 = G.t; let g = 0;
+    while (G.fight && !G.fightEnding && g++ < 30 * 240) { if (smart) { const b = G.boss; if (b && b.state === 'tele' && b.st < 1 && G.cdShield <= 0) skill('shield'); if (G.cdCheer <= 0) skill('cheer'); if (G.cdHeal <= 0 && G.party.some(u => u.hp < u.maxHp * .5)) skill('heal'); } update(1 / 30); }
+    const down = G.party.filter(u => u.down > 0).length, win = G.party.some(u => u.down <= 0) && !G.boss && !G.enemies.length;
+    return { sec:Math.round(G.t - t0), win, down };
+  }, [kind, tier, smart]);
+  const settle = async () => { await p.waitForTimeout(1100); await p.evaluate(() => { document.getElementById('reveal').hidden = true; }); };
+  const results = {};
+  for (const [kind, smart] of [['daily', false], ['daily', true], ['boss', false], ['boss', true]]) {
+    const w = []; for (let i = 0; i < 3; i++) { w.push(await fightRun(kind, 1, smart)); await settle(); }
+    results[kind + (smart ? '_스킬' : '_방치')] = w.map(x => (x.win ? '승' : '패') + x.sec + '초').join(' ');
+  }
+  console.log('난이도', JSON.stringify(results));
+  await p.evaluate(() => { const { G } = window.__sh; G.st.tickets[1] = 2; G.st.bossTickets[1] = 2; G.paused = true; openTown('fight'); }); await p.waitForTimeout(200); await shot('7_fight');
+  const before2 = await p.evaluate(() => { const { G, SH } = window.__sh; const d = SH.dungeonToday(G.st, Date.now()); d.used = 0; d.cleared[1] = true; d.ticketCleared[1] = true; window.__sh.renderTown(); return G.gold; });
+  await p.click('[data-act=sweep][data-k=daily][data-t="1"]'); await p.waitForTimeout(200); await shot('8_sweep');
+  check('소탕 보상', await p.evaluate(g => window.__sh.G.gold > g, before2));
+  await p.click('#revealOk');
+  // 싸움 중 마을로 나가도 입장권은 그대로
+  const kept = await p.evaluate(() => { const { G } = window.__sh; const n = G.st.bossTickets[1]; startFight('boss', 1); document.getElementById('toTown').click(); return [n, G.st.bossTickets[1], !G.fight]; });
+  check('도전 중 나가면 입장권 유지', kept[0] === kept[1] && kept[2], JSON.stringify(kept));
+  await p.click('#depart');
+
   // 저장과 불러오기
   const before = await p.evaluate(() => { const { G, saveGame } = window.__sh; saveGame(); return JSON.stringify(G.st.roster.map(m => m.key + m.level)); });
   await p.reload({ waitUntil:'load' }); await p.waitForTimeout(400);

@@ -19,7 +19,7 @@
   SH.addMon = addMon;
 
   SH.newState = now => {
-    const st = { v:B.SAVE_VERSION, nextId:1, roster:[], partyIds:[], souls:{}, gold:0, stage:1, maxStage:1, cleared:{}, dex:{}, goldFrac:0, lastSeen:now };
+    const st = { v:B.SAVE_VERSION, nextId:1, roster:[], partyIds:[], souls:{}, gold:0, stage:1, maxStage:1, cleared:{}, dex:{}, goldFrac:0, lastSeen:now, tickets:{}, bossTickets:{}, dg:null, pickEls:['fire', 'water', 'grass'] };
     SH.ELS.slice(0, B.START_ROSTER).forEach(el => addMon(st, SH.summonPool(el, 1)[0]));
     st.partyIds = st.roster.slice(0, 3).map(m => m.id);
     return st;
@@ -30,6 +30,7 @@
     try {
       const st = JSON.parse(text);
       if (!st || st.v !== B.SAVE_VERSION || !Array.isArray(st.roster) || !st.roster.length) return null;
+      st.tickets = st.tickets || {}; st.bossTickets = st.bossTickets || {}; st.pickEls = st.pickEls || ['fire', 'water', 'grass'];
       return st;
     } catch (e) { return null; }
   };
@@ -58,9 +59,11 @@
     const top = Math.min(B.MAX_TIER, stage + (elite ? 1 : 0)), drops = [];
     for (let t = 1; t <= top; t++) if (rng() < SH.dropChance(t) && addSoul(st, el, t, 1)) drops.push({ el, tier:t });
     addGold(st, SH.goldPerKill(stage));
+    const ticket = rng() < B.TICKET_PER_RUN / B.KILLS_PER_RUN / B.KILL_SCALE;
+    if (ticket) st.tickets[stage] = (st.tickets[stage] || 0) + 1;
     const ups = [];
     st.partyIds.forEach(id => { const m = SH.getMon(st, id); if (m) ups.push(...addXp(st, m, SH.expPerKill(stage))); });
-    return { drops, ups };
+    return { drops, ups, ticket };
   };
 
   // 맵 보스 처음 격파: 처치 여러 마리분 보상과 다음 섬
@@ -148,13 +151,68 @@
     st.lastSeen = now;
     if (sec < B.OFFLINE_MIN_SEC) return null;
     const kills = Math.floor(sec * B.KILLS_PER_SEC), mobs = SH.islandMobs(st.stage), souls = {}, g0 = st.gold, lv0 = {};
+    let tickets = 0;
     st.partyIds.forEach(id => { const m = SH.getMon(st, id); if (m) lv0[id] = m.level; });
     for (let i = 0; i < kills; i++) {
       const r = SH.grantKill(st, st.stage, mobs[Math.floor(rng() * mobs.length)], rng() < B.ELITE_CHANCE, rng);
       r.drops.forEach(d => { const k = soulKey(d.el, d.tier); souls[k] = (souls[k] || 0) + 1; });
+      if (r.ticket) tickets++;
     }
     const levels = Object.keys(lv0).map(id => { const m = SH.getMon(st, +id); return { name:m.name, from:lv0[id], to:m.level }; }).filter(x => x.to > x.from);
-    return { sec, kills, souls, gold:st.gold - g0, levels };
+    return { sec, kills, souls, gold:st.gold - g0, levels, tickets };
+  };
+
+  // 기존 1판의 보상을 runs판만큼. 적 구성: 맨 위 단계 1마리 + 아래 단계 2마리 (기존 규칙)
+  function grantRuns(st, stage, top, els, runs, rng) {
+    const souls = {}, g0 = st.gold, ups = [];
+    for (let i = 0; i < runs * B.KILLS_PER_RUN; i++) {
+      const el = els[i % els.length], t0 = i % B.KILLS_PER_RUN === 0 ? top : Math.max(1, top - 1);
+      for (let t = 1; t <= Math.min(B.MAX_TIER, t0); t++) if (rng() < B.DROP_BASE * Math.pow(B.DROP_RATIO, t - 1) && addSoul(st, el, t, 1)) { const k = soulKey(el, t); souls[k] = (souls[k] || 0) + 1; }
+    }
+    addGold(st, B.GOLD_WIN * Math.pow(B.GOLD_WIN_GROWTH, stage - 1) * runs);
+    // [사용자 10-26] 던전·보스 경험치는 스테이지 1판과 같다 (보상은 리워드 느낌)
+    st.partyIds.forEach(id => { const m = SH.getMon(st, id); if (m) ups.push(...addXp(st, m, B.EXP_WIN * Math.pow(B.EXP_WIN_GROWTH, stage - 1))); });
+    return { souls, gold:st.gold - g0, ups };
+  }
+
+  // 하루 기준은 한국 시간 자정 [사용자]
+  const kst = now => new Date(now + 9 * 3600e3);
+  SH.dayKey = now => kst(now).toISOString().slice(0, 10);
+  SH.dungeonToday = (st, now) => {
+    const day = SH.dayKey(now);
+    if (!st.dg || st.dg.day !== day) { const c = st.dg ? st.dg.cleared : {}, tc = st.dg ? st.dg.ticketCleared : {}; st.dg = { day, used:0, boss:0, cleared:c, ticketCleared:tc }; }
+    return st.dg;
+  };
+  SH.weekdayEl = now => B.WEEKDAY_EL[kst(now).getUTCDay()];
+  SH.validEls = els => Array.isArray(els) && new Set(els).size === B.TICKET_SET_SIZE && els.every(e => SH.ELS.includes(e));
+  SH.dungeonEls = (st, now) => { const e = SH.weekdayEl(now); return e ? [e] : st.pickEls; };
+  SH.dungeonUnlocked = (st, tier, now) => tier === 1 || !!SH.dungeonToday(st, now).cleared[tier - 1];
+  SH.canDungeon = (st, tier, now) => SH.dungeonUnlocked(st, tier, now) && SH.dungeonToday(st, now).used < B.DUNGEON_DAILY && tier <= B.MAX_TIER;
+  function finishDungeon(st, tier, els, rng) {
+    const r = grantRuns(st, tier, tier, els, B.DUNGEON_RUNS, rng);
+    r.bossTicket = rng() < B.BOSS_TICKET_DUNGEON;
+    if (r.bossTicket) st.bossTickets[tier] = (st.bossTickets[tier] || 0) + 1;
+    return r;
+  }
+  // 이겼을 때만 차감 [사용자]. 소탕은 한 번 깬 곳에서 싸우지 않고 같은 보상
+  SH.winDungeon = (st, tier, now, rng) => {
+    if (!SH.canDungeon(st, tier, now)) return { error:'오늘 횟수를 다 썼어요' };
+    const d = SH.dungeonToday(st, now); d.used++; d.cleared[tier] = true;
+    return finishDungeon(st, tier, SH.dungeonEls(st, now), rng);
+  };
+  SH.winTicketDungeon = (st, tier, now, rng) => {
+    if (!(st.tickets[tier] > 0)) return { error:'입장권이 없어요' };
+    if (!SH.validEls(st.pickEls)) return { error:'서로 다른 3속성을 골라 주세요' };
+    st.tickets[tier]--; SH.dungeonToday(st, now).ticketCleared[tier] = true;
+    return finishDungeon(st, tier, st.pickEls, rng);
+  };
+  SH.canBoss = (st, tier, now) => st.bossTickets[tier] > 0 && SH.dungeonToday(st, now).boss < B.BOSS_DAILY;
+  // 레인보우 샤들링 [사용자]: 입장권 전용, 한 단계 위 스테이지 보상 ×100, 무작위 속성, 이길 때만 차감
+  SH.winBoss = (st, tier, now, rng) => {
+    if (!SH.canBoss(st, tier, now)) return { error:'입장권이 없거나 오늘 횟수를 다 썼어요' };
+    st.bossTickets[tier]--; SH.dungeonToday(st, now).boss++;
+    const el = SH.ELS[Math.floor(rng() * SH.ELS.length)];
+    return grantRuns(st, tier + 1, tier + 1, [el], B.BOSS_RUNS, rng);
   };
 
   SH.setParty = (st, outId, inId) => {

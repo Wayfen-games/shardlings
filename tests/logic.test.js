@@ -74,4 +74,18 @@ t('일행 교체', () => { const s = fresh(); const out = s.partyIds[0], inn = s
 t('합성 뒤에도 일행 3마리 유지', () => { const s = fresh(); const a = s.roster[0]; a.level = 13; s.gold = 1000; const sub = s.roster.find(m => m.el === 'grass'); SH.addMon(s, SH.summonPool('dark', 1)[0]); SH.attemptFuse(s, a.id, sub.id, 0, () => 0); assert.equal(s.partyIds.length, 3); assert.equal(new Set(s.partyIds).size, 3); s.partyIds.forEach(id => assert.ok(SH.getMon(s, id))); });
 t('모든 갈래와 소환 풀이 유효', () => { SH.ELS.forEach(el => { for (let n = 1; n <= B.MAX_TIER; n++) SH.summonPool(el, n).forEach(sp => { assert.ok(SH.SHAPE[sp.shape]); assert.ok(sp.name); assert.ok(sp.cap > sp.base); }); }); });
 
+const MON = Date.UTC(2026, 10, 2, 3); // 월요일 12시 KST
+t('드랍 단계 비율은 사용자 값 0.3', () => assert.equal(B.DROP_RATIO, 0.3));
+t('요일 던전 속성: 월 빛, 화 불', () => { assert.equal(SH.weekdayEl(MON), 'light'); assert.equal(SH.weekdayEl(MON + 864e5), 'fire'); });
+t('주말은 고른 3속성', () => { const s = fresh(), sat = MON + 5 * 864e5; assert.equal(SH.weekdayEl(sat), null); assert.deepEqual(SH.dungeonEls(s, sat), s.pickEls); });
+t('하루 기준은 한국 자정', () => { const before = Date.UTC(2026, 10, 2, 14, 59), after = Date.UTC(2026, 10, 2, 15, 1); assert.notEqual(SH.dayKey(before), SH.dayKey(after)); });
+t('요일 던전 하루 2판, 다음 날 회복', () => { const s = fresh(); assert.ok(!SH.winDungeon(s, 1, MON, Math.random).error); assert.ok(!SH.winDungeon(s, 1, MON, Math.random).error); assert.ok(SH.winDungeon(s, 1, MON, Math.random).error); assert.ok(!SH.winDungeon(s, 1, MON + 864e5, Math.random).error); });
+t('전 단계 던전을 깨야 다음 단계', () => { const s = fresh(); assert.ok(SH.winDungeon(s, 2, MON, Math.random).error); SH.winDungeon(s, 1, MON, Math.random); assert.ok(!SH.winDungeon(s, 2, MON, Math.random).error); });
+t('던전 보상은 그 단계 이하 소울', () => { const s = fresh(); const r = SH.winDungeon(s, 1, MON, () => 0); assert.ok(r.souls.light1 > 0); assert.ok(!r.souls.light2); assert.ok(r.gold > 0); });
+t('입장권 던전은 입장권 1장, 3속성 필수', () => { const s = fresh(); assert.ok(SH.winTicketDungeon(s, 1, MON, Math.random).error); s.tickets[1] = 1; s.pickEls = ['fire', 'fire', 'water']; assert.ok(SH.winTicketDungeon(s, 1, MON, Math.random).error); assert.equal(s.tickets[1], 1); s.pickEls = ['fire', 'water', 'grass']; assert.ok(!SH.winTicketDungeon(s, 1, MON, Math.random).error); assert.equal(s.tickets[1], 0); });
+t('보스는 입장권 전용, 이기면 차감, 위 단계 소울', () => { const s = fresh(); assert.ok(SH.winBoss(s, 1, MON, Math.random).error); s.bossTickets[1] = 2; const r = SH.winBoss(s, 1, MON, () => 0); assert.equal(s.bossTickets[1], 1); assert.ok(Object.keys(r.souls).some(k => k.endsWith('2'))); });
+t('보스 하루 10번', () => { const s = fresh(); s.bossTickets[1] = 20; for (let i = 0; i < 10; i++) assert.ok(!SH.winBoss(s, 1, MON, Math.random).error); assert.ok(SH.winBoss(s, 1, MON, Math.random).error); assert.equal(s.bossTickets[1], 10); });
+t('던전·보스 경험치는 1판분', () => { const s = fresh(), m = SH.getMon(s, s.partyIds[0]); SH.winDungeon(s, 1, MON, () => 0); assert.ok(m.level <= 4); });
+t('옛 저장도 불러옴', () => { const s = fresh(); delete s.tickets; delete s.bossTickets; delete s.pickEls; const c = SH.deserialize(JSON.stringify(s)); assert.deepEqual(c.tickets, {}); assert.equal(c.pickEls.length, 3); });
+
 console.log(`통과 ${passed}`);

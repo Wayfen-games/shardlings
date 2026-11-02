@@ -12,7 +12,8 @@ function manage(st, rng, log, day) {
   SH.ELS.forEach(el => { for (let t = 1; t <= B.MAX_TIER; t++) while ((st.souls[el + t] || 0) >= B.SOULS_PER_SUMMON && st.roster.filter(m => m.el === el && m.tier === t).length < 3) { const m = SH.summon(st, el, t, rng).mon; if (m.tier && log.first[m.tier] == null) log.first[m.tier] = day; log.summons++; } });
   for (let guard = 0; guard < 30; guard++) {
     let best = null;
-    st.roster.filter(a => a.tier < B.MAX_TIER && a.level >= B.FUSE_LEVEL[a.tier - 1]).forEach(a => st.roster.forEach(b => {
+    // 위 단계가 3마리 이상이면 그 아래는 합성하지 않는다: 골드를 낮은 합성에 낭비하지 않는 플레이어
+    st.roster.filter(a => a.tier < B.MAX_TIER && a.level >= B.FUSE_LEVEL[a.tier - 1] && st.roster.filter(m => m.tier === a.tier + 1).length < 3).forEach(a => st.roster.forEach(b => {
       if (a === b || b.tier !== SH.subTier(a.tier) || !SH.PAIR[a.el].includes(b.el)) return;
       const c = SH.fuseCheck(st, a, b, 1);
       if (c.ok && (!best || a.tier > best.a.tier)) best = { a, b };
@@ -27,9 +28,15 @@ function manage(st, rng, log, day) {
   st.partyIds = st.roster.slice().sort((x, y) => need(y) - need(x) || y.tier - x.tier || x.level - y.level).slice(0, 3).map(m => m.id);
   const t = top(st);
   st.stage = Math.min(B.MAX_ISLAND, t);
+  // 입장권은 바로 쓰고, 이길 만한 단계(최고 단계 이하)만 도전한다
+  const now = day * 864e5;
+  const best = Math.min(t, B.MAX_TIER);
+  for (let n = best; n >= 1; n--) { while (SH.canDungeon(st, n, now)) { SH.winDungeon(st, n, now, rng); log.dungeons++; } }
+  for (let n = best; n >= 1; n--) { while (st.tickets[n] > 0) { SH.winTicketDungeon(st, n, now, rng); log.tickets++; } }
+  for (let n = best; n >= 1; n--) { while (SH.canBoss(st, n, now)) { SH.winBoss(st, n, now, rng); log.bosses++; } }
 }
 function player(seed) {
-  const rng = rngOf(seed), st = SH.newState(0), log = { first:{}, tries:0, summons:0, stuck:{ gold:0 } };
+  const rng = rngOf(seed), st = SH.newState(0), log = { first:{}, tries:0, summons:0, dungeons:0, tickets:0, bosses:0 };
   for (let tick = 0; tick < MAX_DAYS * DAY_TICKS; tick++) {
     const day = tick / DAY_TICKS, mobs = SH.islandMobs(st.stage);
     for (let k = 0; k < KILLS_PER_TICK; k++) SH.grantKill(st, st.stage, mobs[Math.floor(rng() * 3)], rng() < B.ELITE_CHANCE, rng);
@@ -45,4 +52,4 @@ const med = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
 const fmt = d => (d >= 900 ? '없음' : d < 1 ? (d * 24).toFixed(1) + '시간' : d.toFixed(1) + '일');
 console.log(`하루 처치 ${Math.round(86400 * B.KILLS_PER_SEC)}, KILL_SCALE ${B.KILL_SCALE}, 1단계 소울 처치당 ${(SH.dropChance(1) * 100).toFixed(1)}%`);
 for (let t = 2; t <= B.MAX_TIER; t++) { const f = res.map(r => (r.first[t] == null ? 999 : r.first[t])); console.log(` 첫 ${t}단계: ${fmt(med(f))} [${fmt(Math.min(...f))} ~ ${fmt(Math.max(...f))}]`); }
-console.log(` 합성 시도 ${Math.round(med(res.map(r => r.tries)))}, 소환 ${Math.round(med(res.map(r => r.summons)))}, 끝 골드 ${med(res.map(r => r.gold))}, 최고 레벨 ${med(res.map(r => r.maxLv))}`);
+console.log(` 합성 시도 ${Math.round(med(res.map(r => r.tries)))}, 소환 ${Math.round(med(res.map(r => r.summons)))}, 끝 골드 ${med(res.map(r => r.gold))}, 최고 레벨 ${med(res.map(r => r.maxLv))}, 던전 ${med(res.map(r => r.dungeons))}, 입장권 ${med(res.map(r => r.tickets))}, 보스 ${med(res.map(r => r.bosses))}`);

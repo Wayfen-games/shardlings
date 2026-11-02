@@ -35,12 +35,22 @@
     OFFLINE_MIN_SEC: 60,
     GAUGE_KILLS: 70,
     ELITE_CHANCE: 1 / 3,                           // [사용자] 스테이지 = (n+1)단계 1 + n단계 2의 비율
-    DROP_BASE: 0.5, DROP_RATIO: 0.4,               // [임시] 사용자 값은 ×0.3. 입장권 보스·던전이 돌아올 때까지 0.4 (시뮬레이션: 0.3이면 첫 5단계 약 18일)
+    DROP_BASE: 0.5, DROP_RATIO: 0.3,               // [사용자] 1단계 0.5, 단계마다 ×0.3
     KILL_SCALE: 7,                                 // [임시] 기존 게임 하루 처치 수 ÷ 실시간 하루 처치 수
     EXP_WIN: 10, EXP_WIN_GROWTH: 1.3,              // [사용자] 기존 1판 경험치, 단계마다 ×1.3
     GOLD_WIN: 25, GOLD_WIN_GROWTH: 1.3,            // [사용자] 기존 1판 골드, 단계마다 ×1.3
     KILLS_PER_RUN: 3,                              // 기존 1판 = 적 3마리
     BOSS_KILL_VALUE: 40,                           // [임시] 맵 보스 보상 = 처치 40마리분
+
+    // 던전·보스 [사용자]
+    DUNGEON_DAILY: 2,                              // 요일 던전 하루 2판, 이길 때만 차감
+    DUNGEON_RUNS: 30, BOSS_RUNS: 100,              // 보상 = 기존 1판의 ×30, ×100
+    BOSS_DAILY: 10,                                // 레인보우 샤들링 하루 10번
+    TICKET_PER_RUN: 0.01,                          // 입장권: 기존 1판당 1%
+    BOSS_TICKET_DUNGEON: 0.02,                     // 보스 입장권: 던전 승리 때 2%
+    TICKET_SET_SIZE: 3,                            // 입장권 던전과 주말은 서로 다른 3속성
+    WEEKDAY_EL: [null, 'light', 'fire', 'water', 'grass', 'dark', null], // 일~토 [사용자]
+    DUNGEON_HP: 7, DUNGEON_ATK: 2.2,               // [임시] 적 1마리 배율
 
     // 전투 [임시]
     ENEMY_HP: 62, ENEMY_ATK: 2.6, ISLAND_STAT: 1.5, ELITE_STAT: 1.5,
