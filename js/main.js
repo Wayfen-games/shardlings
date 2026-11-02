@@ -26,4 +26,5 @@ setInterval(() => { if (!document.hidden) saveGame(); }, 10000);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); else claimAway(); });
 addEventListener('pagehide', saveGame);
 requestAnimationFrame(frame);
+$('ladder').onclick = () => { audio(); if (G.phase === 'hunt' && !G.fight) { const loot = G.loot; openTown('fight'); if (loot && loot.kills >= 5) showLoot('사냥 결과', loot); } };
 window.__sh = { G, SH, update, draw, hud, skill, openTown, renderTown, depart, saveGame };

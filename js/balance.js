@@ -28,25 +28,31 @@
     FUSE_STACK_GOLD: 1.2,                          // [사용자] 스택마다 +20%
     FUSE_SOUL_MAX: 100, FUSE_SOUL_DISCOUNT: 0.01,  // [사용자] 소울 1개당 골드 -1%, 100개면 공짜
 
-    // 사냥 [임시]: 켜 둠과 꺼 둠의 효율이 같다 [사용자 11-02]
+    // 사냥 [사용자 11-02 번복]: 인게임 도파민을 위해 방치는 기존처럼 낮게, 하루 보상 한도와 이월로 손해를 막는다
     SPAWN_EVERY: 3,                                // 초당 처치 수의 상한을 정한다
     KILLS_PER_SEC: 1 / 3,
-    OFFLINE_CAP_SEC: 12 * 3600,                    // [제안] 광고 버프 상한과 같은 12시간
+    DAILY_KILLS: 1500,                             // [사용자] 기존 하루 500판 × 적 3마리
+    CARRY_KILLS: 9000,                             // [사용자] 기존 이월 3,000판 × 3
+    OVER_LIMIT_RATE: 0.1,                          // [제안] 한도를 다 쓴 뒤 사냥 보상도 방치와 같게
+    OFFLINE_RATE: 0.1,                             // [사용자 10-26] 방치 효율 10%
+    OFFLINE_CAP_SEC: 12 * 3600,                    // [사용자] 최대 12시간
     OFFLINE_MIN_SEC: 60,
     GAUGE_KILLS: [10, 18, 26, 34, 42],             // [사용자 11-02] 섬이 초반부터 길다 → 첫 섬은 30초 안팎 [임시]
     MAP_BOSS_SCALE: [.45, .6, .75, .9, 1],         // [임시] 앞쪽 섬 보스는 짧게
     ELITE_CHANCE: 1 / 3,                           // [사용자] 스테이지 = (n+1)단계 1 + n단계 2의 비율
     DROP_BASE: 0.5, DROP_RATIO: 0.3,               // [사용자] 1단계 0.5, 단계마다 ×0.3
-    KILL_SCALE: 7,                                 // [임시] 기존 게임 하루 처치 수 ÷ 실시간 하루 처치 수
+    KILL_SCALE: 1,                                 // 처치당 확률을 기존 게임 그대로 둔다
     EXP_WIN: 10, EXP_WIN_GROWTH: 1.3,              // [사용자] 기존 1판 경험치, 단계마다 ×1.3
     GOLD_WIN: 25, GOLD_WIN_GROWTH: 1.3,            // [사용자] 기존 1판 골드, 단계마다 ×1.3
     KILLS_PER_RUN: 3,                              // 기존 1판 = 적 3마리
-    BOSS_KILL_VALUE: 40,                           // [임시] 맵 보스 보상 = 처치 40마리분
+    BOSS_KILL_VALUE: 21,                           // [임시] 맵 보스 보상 = 처치 40마리분
 
     // 던전·보스 [사용자]
     DUNGEON_DAILY: 2,                              // 요일 던전 하루 2판, 이길 때만 차감
     DUNGEON_RUNS: 30, BOSS_RUNS: 100,              // 보상 = 기존 1판의 ×30, ×100
     BOSS_DAILY: 10,                                // 레인보우 샤들링 하루 10번
+    RAID_TICKET_PER_TIER: 0.02, RAID_TICKET_MAX: 0.1, // [사용자] 보스 단계 × 2%, 최대 10%
+    RAID_RUNS: 200, RAID_TIER: 5, RAID_HP: 4, RAID_ATK: 1.4, // [임시] 5단계 기준, 다섯 속성 1마리씩
     TICKET_PER_RUN: 0.01,                          // 입장권: 기존 1판당 1%
     BOSS_TICKET_DUNGEON: 0.02,                     // 보스 입장권: 던전 승리 때 2%
     TICKET_SET_SIZE: 3,                            // 입장권 던전과 주말은 서로 다른 3속성

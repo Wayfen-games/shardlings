@@ -63,8 +63,8 @@ t('만렙에서 멈춤', () => { const s = fresh(), m = s.roster[0]; SH.addXp(s,
 t('적은 자기 단계 이하만 드랍', () => { const s = fresh(); const r = SH.grantKill(s, 1, 'fire', false, () => 0); assert.deepEqual(r.drops.map(d => d.tier), [1]); const e = SH.grantKill(s, 1, 'fire', true, () => 0); assert.deepEqual(e.drops.map(d => d.tier), [1, 2]); });
 t('소울 상한 999', () => { const s = fresh(); SH.addSoul(s, 'fire', 1, 5000); assert.equal(s.souls.fire1, 999); });
 t('섬마다 나오는 속성이 다름', () => { assert.notDeepEqual(SH.islandMobs(1), SH.islandMobs(2)); assert.notDeepEqual(SH.islandMobs(2), SH.islandMobs(3)); });
-t('방치 12시간 상한', () => { const s = fresh(); const r = SH.claimOffline(s, NOW + 48 * 3600e3, Math.random); assert.equal(r.sec, 12 * 3600); assert.equal(r.kills, Math.floor(12 * 3600 * B.KILLS_PER_SEC)); });
-t('방치는 켜 둔 것과 같은 처치 수', () => { const s = fresh(); const r = SH.claimOffline(s, NOW + 3600e3, Math.random); assert.equal(r.kills, 1200); assert.equal(B.KILLS_PER_SEC, 1 / B.SPAWN_EVERY); });
+t('방치 12시간 상한, 효율 10%', () => { const s = fresh(); const r = SH.claimOffline(s, NOW + 48 * 3600e3, Math.random); assert.equal(r.sec, 12 * 3600); assert.equal(r.kills, 1440); });
+t('방치는 켜 둔 처치 수의 10%', () => { const s = fresh(); const r = SH.claimOffline(s, NOW + 3600e3, Math.random); assert.equal(r.kills, 120); assert.equal(B.KILLS_PER_SEC, 1 / B.SPAWN_EVERY); });
 t('시계를 되돌려도 쌓이지 않음', () => { const s = fresh(); assert.equal(SH.claimOffline(s, NOW - 3600e3, Math.random), null); });
 t('1분 미만은 보상 없음', () => { const s = fresh(); assert.equal(SH.claimOffline(s, NOW + 30e3, Math.random), null); });
 t('저장 후 불러오면 같음', () => { const s = fresh(); s.gold = 777; SH.addSoul(s, 'fire', 2, 3); const c = SH.deserialize(SH.serialize(s)); assert.deepEqual(c, s); });
@@ -99,5 +99,14 @@ t('어떤 3속성을 골라도 첫 합성 가능', () => {
 });
 t('옛 저장은 튜토리얼 없음', () => { const s = fresh(); delete s.tut; assert.ok(!SH.deserialize(JSON.stringify(s)).tut); });
 t('첫 섬은 짧고 뒤로 갈수록 길다', () => { assert.ok(B.GAUGE_KILLS[0] <= 12); assert.ok(B.GAUGE_KILLS[4] > B.GAUGE_KILLS[0]); });
+
+t('처치당 소울 확률은 기존 그대로 50%', () => assert.equal(SH.dropChance(1), .5));
+t('입장권은 1판(3마리)당 1%', () => { assert.ok(Math.abs(B.TICKET_PER_RUN / B.KILLS_PER_RUN / B.KILL_SCALE - .01 / 3) < 1e-12); });
+t('하루 한도 1500, 쓰면 줄어듦', () => { const s = fresh(); assert.equal(SH.poolToday(s, MON), 1500); SH.huntKill(s, 1, 'fire', false, MON, Math.random); assert.equal(s.pool, 1499); });
+t('못 쓴 한도는 이월, 최대 9000', () => { const s = fresh(); SH.poolToday(s, MON); assert.equal(SH.poolToday(s, MON + 864e5), 3000); assert.equal(SH.poolToday(s, MON + 30 * 864e5), 9000); });
+t('한도를 다 쓰면 보상 10%', () => { const s = fresh(); SH.poolToday(s, MON); s.pool = 0; const a = SH.huntKill(s, 1, 'fire', false, MON, () => .4); assert.ok(a.over); assert.equal(a.drops.length, 0); assert.equal(s.pool, 0); const b = SH.huntKill(s, 1, 'fire', false, MON, () => .04); assert.equal(b.drops.length, 1); });
+t('시계를 되돌려도 한도가 늘지 않음', () => { const s = fresh(); SH.poolToday(s, MON); s.pool = 10; SH.poolToday(s, MON - 5 * 864e5); assert.equal(s.pool, 10); });
+t('보스 승리로 레이드 입장권', () => { const s = fresh(); s.bossTickets[3] = 1; const r = SH.winBoss(s, 3, MON, () => 0); assert.ok(r.raidTicket); assert.equal(s.raidTickets, 1); });
+t('레이드는 다섯 속성 필요, 이기면 차감', () => { const s = fresh(); s.raidTickets = 1; assert.ok(SH.winRaid(s, Math.random).error); SH.addMon(s, SH.summonPool('dark', 1)[0]); assert.equal(SH.raidParty(s).length, 5); assert.ok(!SH.winRaid(s, Math.random).error); assert.equal(s.raidTickets, 0); });
 
 console.log(`통과 ${passed}`);

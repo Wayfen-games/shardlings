@@ -19,7 +19,7 @@
   SH.addMon = addMon;
 
   SH.newState = now => {
-    const st = { v:B.SAVE_VERSION, nextId:1, roster:[], partyIds:[], souls:{}, gold:0, stage:1, maxStage:1, cleared:{}, dex:{}, goldFrac:0, lastSeen:now, tickets:{}, bossTickets:{}, dg:null, pickEls:['fire', 'water', 'grass'], tut:0 };
+    const st = { v:B.SAVE_VERSION, nextId:1, roster:[], partyIds:[], souls:{}, gold:0, stage:1, maxStage:1, cleared:{}, dex:{}, goldFrac:0, lastSeen:now, tickets:{}, bossTickets:{}, raidTickets:0, dg:null, pickEls:['fire', 'water', 'grass'], tut:0, pool:B.DAILY_KILLS, poolDay:null, seenSoul:{} };
     SH.ELS.slice(0, B.START_ROSTER).forEach(el => addMon(st, SH.summonPool(el, 1)[0]));
     st.partyIds = st.roster.slice(0, 3).map(m => m.id);
     return st;
@@ -53,7 +53,7 @@
     try {
       const st = JSON.parse(text);
       if (!st || st.v !== B.SAVE_VERSION || !Array.isArray(st.roster) || !st.roster.length) return null;
-      st.tickets = st.tickets || {}; st.bossTickets = st.bossTickets || {}; st.pickEls = st.pickEls || ['fire', 'water', 'grass'];
+      st.tickets = st.tickets || {}; st.bossTickets = st.bossTickets || {}; st.pickEls = st.pickEls || ['fire', 'water', 'grass']; st.raidTickets = st.raidTickets || 0; st.seenSoul = st.seenSoul || {};
       return st;
     } catch (e) { return null; }
   };
@@ -78,15 +78,32 @@
   function addGold(st, n) { st.goldFrac += n; const w = Math.floor(st.goldFrac); st.goldFrac -= w; st.gold += w; return w; }
 
   // 적 1마리 처치. [사용자] 적은 자기 단계 이하 소울을 단계마다 따로 굴린다
-  SH.grantKill = (st, stage, el, elite, rng) => {
+  SH.grantKill = (st, stage, el, elite, rng, rate = 1) => {
     const top = Math.min(B.MAX_TIER, stage + (elite ? 1 : 0)), drops = [];
-    for (let t = 1; t <= top; t++) if (rng() < SH.dropChance(t) && addSoul(st, el, t, 1)) drops.push({ el, tier:t });
-    addGold(st, SH.goldPerKill(stage));
-    const ticket = rng() < B.TICKET_PER_RUN / B.KILLS_PER_RUN / B.KILL_SCALE;
+    for (let t = 1; t <= top; t++) if (rng() < SH.dropChance(t) * rate && addSoul(st, el, t, 1)) drops.push({ el, tier:t });
+    addGold(st, SH.goldPerKill(stage) * rate);
+    const ticket = rng() < B.TICKET_PER_RUN / B.KILLS_PER_RUN / B.KILL_SCALE * rate;
     if (ticket) st.tickets[stage] = (st.tickets[stage] || 0) + 1;
     const ups = [];
-    st.partyIds.forEach(id => { const m = SH.getMon(st, id); if (m) ups.push(...addXp(st, m, SH.expPerKill(stage))); });
+    st.partyIds.forEach(id => { const m = SH.getMon(st, id); if (m) ups.push(...addXp(st, m, SH.expPerKill(stage) * rate)); });
     return { drops, ups, ticket };
+  };
+  // 하루 사냥 보상 한도 [사용자]: 못 쓴 만큼 이월. 한국 자정마다 충전
+  SH.poolToday = (st, now) => {
+    const day = SH.dayKey(now);
+    if (st.pool == null) st.pool = B.DAILY_KILLS;
+    if (st.poolDay == null) st.poolDay = day;
+    if (st.poolDay !== day) {
+      const days = Math.round((Date.parse(day) - Date.parse(st.poolDay)) / 864e5);
+      if (days > 0) st.pool = Math.min(B.CARRY_KILLS, st.pool + B.DAILY_KILLS * days);
+      st.poolDay = day;
+    }
+    return st.pool;
+  };
+  SH.huntKill = (st, stage, el, elite, now, rng) => {
+    let rate = B.OVER_LIMIT_RATE;
+    if (SH.poolToday(st, now) > 0) { st.pool--; rate = 1; }
+    return Object.assign(SH.grantKill(st, stage, el, elite, rng, rate), { over:rate < 1 });
   };
 
   // 맵 보스 처음 격파: 처치 여러 마리분 보상과 다음 섬
@@ -173,7 +190,7 @@
     const sec = Math.min(B.OFFLINE_CAP_SEC, Math.max(0, (now - st.lastSeen) / 1000));
     st.lastSeen = now;
     if (sec < B.OFFLINE_MIN_SEC) return null;
-    const kills = Math.floor(sec * B.KILLS_PER_SEC), mobs = SH.islandMobs(st.stage), souls = {}, g0 = st.gold, lv0 = {};
+    const kills = Math.floor(sec * B.KILLS_PER_SEC * B.OFFLINE_RATE), mobs = SH.islandMobs(st.stage), souls = {}, g0 = st.gold, lv0 = {};
     let tickets = 0;
     st.partyIds.forEach(id => { const m = SH.getMon(st, id); if (m) lv0[id] = m.level; });
     for (let i = 0; i < kills; i++) {
@@ -234,8 +251,21 @@
   SH.winBoss = (st, tier, now, rng) => {
     if (!SH.canBoss(st, tier, now)) return { error:'입장권이 없거나 오늘 횟수를 다 썼어요' };
     st.bossTickets[tier]--; SH.dungeonToday(st, now).boss++;
-    const el = SH.ELS[Math.floor(rng() * SH.ELS.length)];
-    return grantRuns(st, tier + 1, tier + 1, [el], B.BOSS_RUNS, rng);
+    const el = SH.ELS[Math.floor(rng() * SH.ELS.length)], r = grantRuns(st, tier + 1, tier + 1, [el], B.BOSS_RUNS, rng);
+    r.raidTicket = rng() < Math.min(B.RAID_TICKET_MAX, tier * B.RAID_TICKET_PER_TIER);
+    if (r.raidTicket) st.raidTickets++;
+    return r;
+  };
+  // 레이드 [사용자]: 속성마다 1마리씩 5마리, 깼을 때만 입장권 차감
+  SH.raidParty = st => {
+    const list = SH.ELS.map(el => st.roster.filter(m => m.el === el).sort((a, b) => b.tier - a.tier || b.level - a.level)[0]);
+    return list.every(Boolean) ? list : null;
+  };
+  SH.canRaid = st => st.raidTickets > 0 && !!SH.raidParty(st);
+  SH.winRaid = (st, rng) => {
+    if (!SH.canRaid(st)) return { error:'입장권이나 다섯 속성 샤들링이 부족해요' };
+    st.raidTickets--;
+    return grantRuns(st, B.RAID_TIER, B.RAID_TIER, SH.ELS, B.RAID_RUNS, rng);
   };
 
   SH.setParty = (st, outId, inId) => {

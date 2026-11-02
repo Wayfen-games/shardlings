@@ -260,12 +260,18 @@ function kill(e) {
   burst(e.x, e.y - 5, '#ffffff', 4, 30);
   blip('kill', 240, .1, 'triangle', .06, -140);
   if (G.fight) return;
-  const r = SH.grantKill(G.st, G.stage, e.el, e.elite, Math.random);
+  const r = SH.huntKill(G.st, G.stage, e.el, e.elite, Date.now(), Math.random);
   trackLoot(r); G.loot.kills++;
-  r.drops.forEach(d => { dropOrb(e.x, e.y - 6, d.el, d.tier); if (d.tier >= Math.max(3, G.stage)) rareDrop(d); });
-  if (r.ticket) { banner(`입장권!<small>${G.stage}단계 던전 입장권</small>`, 1300); fan([988, 1319]); }
+  r.drops.forEach(d => { dropOrb(e.x, e.y - 6, d.el, d.tier); const seen = G.st.seenSoul[d.tier]; G.st.seenSoul[d.tier] = true;
+    if (!seen && d.tier >= 2) bigDrop(`첫 ${d.tier}단계 소울!`, `${ELN[d.el]} 속성`, [784, 988, 1319, 1568]);
+    else if (d.tier >= Math.max(3, G.stage)) rareDrop(d); });
+  if (r.ticket) bigDrop('입장권!', `${G.stage}단계 던전 입장권`, [988, 1319, 1568, 1319, 1760]);
   showLevelUps(r.ups);
   if (G.phase === 'hunt' && !G.stress && !isCleared()) { G.kills++; if (G.kills >= G.need) startWarn(); }
+}
+function bigDrop(title, sub, notes) {
+  const f = $('flash'); f.classList.remove('on'); void f.offsetWidth; if (!reduced) f.classList.add('on');
+  banner(`${title}<small>${sub}</small>`, 1700); fan(notes, .07); shake(3); burst(G.hero.x, G.hero.y - 16, '#ffd45e', 24, 90, .8);
 }
 function rareDrop(d) { banner(`${d.tier}단계 소울!<small>${ELN[d.el]} 속성</small>`, 1300); fan([880, 1175, 1568]); shake(2); }
 function dropOrb(x, y, el, tier) { const t = rnd(0, 6.283), v = rnd(20, 50); G.orbs.push({ x, y, vx:Math.cos(t) * v, vy:Math.sin(t) * v - 25, t:0, el, tier }); }
@@ -641,7 +647,12 @@ function hud() {
   else if (G.phase === 'clear') { $('gauge').style.width = '0%'; $('gaugeTxt').textContent = '정복 완료'; }
   else if (isCleared()) { $('gauge').style.width = '100%'; $('gaugeTxt').textContent = '정복한 섬'; }
   else { $('gauge').style.width = G.kills / G.need * 100 + '%'; $('gaugeTxt').textContent = `토벌 ${G.kills}/${G.need}`; }
-  $('lvl').textContent = G.gold + ' G';
+  $('lvl').textContent = G.gold.toLocaleString('ko-KR') + ' G';
+  const pool = SH.poolToday(G.st, Date.now()), P = $('fps');
+  P.textContent = pool > 0 ? `오늘 ${pool.toLocaleString('ko-KR')}마리` : '오늘 보상 10%'; P.classList.toggle('over', pool <= 0);
+  $('goal').textContent = goalText();
+  const nT = sumOf(G.st.tickets), nB = sumOf(G.st.bossTickets), L = $('ladder');
+  L.textContent = `입장권 ${nT} · 보스 ${nB} · 레이드 ${G.st.raidTickets}`; L.classList.toggle('has', nT + nB + G.st.raidTickets > 0);
   ELS.forEach(el => { gemEl[el].textContent = G.souls[el + Math.min(SH.B.MAX_TIER, G.stage)] || 0; });
   for (const id in cdBox) { const [k, max] = cdBox[id]; $(id).querySelector('.cd').style.height = G[k] / max * 100 + '%'; }
   $('skShield').classList.toggle('urgent', !!(b && b.state === 'tele' && G.cdShield <= 0));
@@ -671,6 +682,16 @@ function startFight(kind, tier) {
   const now = Date.now();
   const els = kind === 'daily' ? SH.dungeonEls(G.st, now) : G.st.pickEls;
   G.fight = { kind, tier, total:3 };
+  if (kind === 'raid') {
+    G.party = SH.raidParty(G.st).map(m => makeUnit(m));
+    G.party.forEach((u, i) => { u.x = G.hero.x + (i - 2) * 26; u.y = G.hero.y - 20; });
+    G.fight.tier = SH.B.RAID_TIER; G.fight.stage = 3;
+    $('gaugeBar').classList.add('boss');
+    spawnBoss();
+    G.boss.hp = G.boss.maxHp = G.boss.maxHp * SH.B.RAID_HP; G.boss.atk *= SH.B.RAID_ATK; G.fight.atk = G.boss.atk;
+    banner('레이드<small>다섯 속성이 함께 싸워요</small>', 1800);
+    return;
+  }
   $('gaugeBar').classList.add('boss');
   if (kind === 'boss') { spawnBoss(); banner(`${tier}단계 레인보우 샤들링<small>빨간 원이 뜨면 보호막을 누르세요</small>`, 1800); return; }
   G.phase = 'fight';
@@ -684,7 +705,11 @@ function startFight(kind, tier) {
 }
 function checkFight() {
   if (G.party.every(u => u.down > 0)) { finishFight(false); return; }
-  if (G.fight.kind !== 'boss' && !G.enemies.length) finishFight(true);
+  if (G.fight.kind === 'raid' && G.boss) { // 체력이 깎일수록 보스가 강해진다
+    const ph = G.boss.hp > G.boss.maxHp * 2 / 3 ? 3 : G.boss.hp > G.boss.maxHp / 3 ? 2 : 1;
+    if (ph < G.fight.stage) { G.fight.stage = ph; G.boss.atk = G.fight.atk * (1 + (3 - ph) * .3); banner(`${4 - ph}페이즈<small>레이드 보스가 더 강해졌어요</small>`, 1200); shake(4); fan([196, 262, 330], .1); }
+  }
+  if ((G.fight.kind === 'daily' || G.fight.kind === 'ticket') && !G.enemies.length) finishFight(true);
 }
 function finishFight(win, quit) {
   const f = G.fight; if (!f || G.fightEnding) return;
@@ -693,10 +718,11 @@ function finishFight(win, quit) {
     G.fight = null; G.fightEnding = false; G.enemies = []; G.shots = []; G.boss = null; G.phase = 'hunt';
     $('gaugeBar').classList.remove('boss');
     let r = null;
-    if (win) r = f.kind === 'boss' ? SH.winBoss(G.st, f.tier, Date.now(), Math.random) : f.kind === 'daily' ? SH.winDungeon(G.st, f.tier, Date.now(), Math.random) : SH.winTicketDungeon(G.st, f.tier, Date.now(), Math.random);
+    if (win) r = f.kind === 'raid' ? SH.winRaid(G.st, Math.random) : f.kind === 'boss' ? SH.winBoss(G.st, f.tier, Date.now(), Math.random) : f.kind === 'daily' ? SH.winDungeon(G.st, f.tier, Date.now(), Math.random) : SH.winTicketDungeon(G.st, f.tier, Date.now(), Math.random);
+    G.party = []; syncParty();
     saveGame();
     openTown('fight');
-    if (win && r && !r.error) showReward(f.kind === 'boss' ? '레인보우 샤들링 격파!' : '던전 승리!', r);
+    if (win && r && !r.error) showReward(f.kind === 'raid' ? '레이드 클리어!' : f.kind === 'boss' ? '레인보우 샤들링 격파!' : '던전 승리!', r);
     else if (!quit) showFightLost();
   };
   if (quit) done(); else setTimeout(done, win ? 900 : 700);
@@ -747,6 +773,6 @@ function frame(now) {
   }
   if (now - lastHud > 90) { hud(); lastHud = now; }
   fAcc += real; fN++;
-  if (fAcc >= .5) { const f = Math.round(fN / fAcc); $('fps').textContent = f + ' fps'; if (G.stress > 0) G.stressS.push(f); fAcc = 0; fN = 0; }
+  if (fAcc >= .5) { const f = Math.round(fN / fAcc); if (G.stress > 0) G.stressS.push(f); fAcc = 0; fN = 0; }
   requestAnimationFrame(frame);
 }

@@ -8,8 +8,9 @@
 <div id="app">
   <canvas id="game" aria-label="샤들링 3마리가 떠 있는 섬에서 자동으로 사냥하는 게임 화면"></canvas>
   <div id="top" class="band">
-    <div class="row"><div id="stage">1번 섬 · 새싹 들판</div><div id="lvl">0 G</div><div id="fps">-- fps</div></div>
+    <div class="row"><div id="stage">1번 섬 · 새싹 들판</div><div id="lvl">0 G</div><div id="fps"></div></div>
     <div class="row"><div id="gaugeBar" class="bar"><i id="gauge"></i><b id="gaugeTxt">토벌 0/70</b></div></div>
+    <div class="row"><div id="goal"></div><button class="tiny" id="ladder" type="button">입장권 0 · 보스 0 · 레이드 0</button></div>
     <div class="row">
       <div class="gems">
         <span class="gem" id="gFire" style="--c:var(--fire)">0</span>
@@ -29,6 +30,7 @@
     <button class="skill" id="skHeal" type="button">치유<small>회복·부활</small><span class="cd"></span></button>
     <button class="skill" id="skShield" type="button">보호막<small>보스 강타 막기</small><span class="cd"></span></button>
   </div>
+  <div id="flash"></div>
   <div id="fade"></div>
   <div id="town" hidden>
     <canvas id="townScene" width="300" height="84" aria-label="조각 마을 풍경"></canvas>

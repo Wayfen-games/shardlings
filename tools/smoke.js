@@ -104,6 +104,24 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'OK ' : 'NG '} ${n
   check('도전 중 나가면 입장권 유지', kept[0] === kept[1] && kept[2], JSON.stringify(kept));
   await p.click('#depart');
 
+  // 레이드: 5마리 기준 측정, 끝나면 일행 3마리로 복귀
+  const raid = await p.evaluate(() => { const { G, update, skill, SH } = window.__sh;
+    SH.ELS.forEach(el => { if (!G.roster.some(m => m.el === el && m.tier === 5)) { const m = SH.addMon(G.st, SH.summonPool(el, 5)[0]); m.level = 59; } });
+    G.st.raidTickets = 2; startFight('raid', 1); G.paused = true;
+    const n = G.party.length, t0 = G.t; let g = 0;
+    while (G.fight && !G.fightEnding && g++ < 30 * 400) { const b = G.boss; if (b && b.state === 'tele' && b.st < 1 && G.cdShield <= 0) skill('shield'); if (G.cdCheer <= 0) skill('cheer'); if (G.cdHeal <= 0 && G.party.some(u => u.hp < u.maxHp * .5)) skill('heal'); update(1 / 30); }
+    return { n, sec:Math.round(G.t - t0), win:!G.boss, phase:G.fight && G.fight.stage }; });
+  check('레이드 5마리가 실제로 싸움', raid.n === 5 && raid.sec > 5, JSON.stringify(raid));
+  await settle();
+  check('레이드 뒤 일행 3마리', await p.evaluate(() => window.__sh.G.party.length === 3 && !window.__sh.G.fight));
+  await p.click('#depart');
+  // 사다리 표시와 입장권 연출
+  const ladder = await p.evaluate(() => { const { G, hud } = window.__sh; G.paused = true; G.st.tickets[1] = 3; G.st.bossTickets[2] = 1; bigDrop('입장권!', '1단계 던전 입장권', [988]); hud(); return { text:document.getElementById('ladder').innerText, goal:document.getElementById('goal').innerText, pool:document.getElementById('fps').innerText, flash:document.getElementById('flash').classList.contains('on') }; });
+  check('입장권 사다리 표시', ladder.text.includes('입장권 3') && ladder.goal.length > 0 && ladder.flash, JSON.stringify(ladder));
+  await p.evaluate(() => { window.__sh.draw(); }); await shot('9_ladder');
+  await p.click('#ladder'); check('입장권 버튼으로 도전 탭', await p.evaluate(() => !document.getElementById('town').hidden && document.querySelector('[data-tab=fight]').getAttribute('aria-selected') === 'true'));
+  await p.evaluate(() => { document.getElementById('reveal').hidden = true; }); await p.click('#depart');
+
   // 맵 보스에게 지면 물러남
   const ret = await p.evaluate(() => { const { G, update } = window.__sh; G.paused = true; G.kills = G.need - 1; spawnBoss(); G.party.forEach(u => { u.hp = 1; }); knockoutAll = G.party.forEach(u => knockout(u)); return { boss:!!G.boss, phase:G.phase, up:G.party.every(u => u.down <= 0) }; });
   check('맵 보스 패배는 물러나기', !ret.boss && ret.phase === 'hunt' && ret.up, JSON.stringify(ret));
@@ -117,7 +135,7 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'OK ' : 'NG '} ${n
   // 방치 보상
   await p.evaluate(() => { const { G, SH, saveGame } = window.__sh; const raw = JSON.parse(localStorage.getItem(SH.B.SAVE_KEY)); raw.lastSeen = Date.now() - 3600e3; window.onpagehide = null; localStorage.setItem('_probe', JSON.stringify(raw)); });
   const off = await p.evaluate(() => { const { G, SH } = window.__sh; G.st.lastSeen = Date.now() - 3600e3; const g0 = G.gold; const r = SH.claimOffline(G.st, Date.now(), Math.random); return { kills:r.kills, gold:r.gold, souls:Object.keys(r.souls).length }; });
-  check('1시간 방치 = 1200마리', off.kills === 1200, JSON.stringify(off));
+  check('1시간 방치 = 120마리(10%)', off.kills === 120, JSON.stringify(off));
   await p.evaluate(() => { showOffline({ sec:3600, kills:1200, souls:{ fire2:3, dark1:7 }, gold:480, levels:[{ name:'라바롱', from:13, to:15 }] }); }); await p.waitForTimeout(200); await shot('6_offline');
   check('가로 스크롤 없음', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   check('오류 없음', errs.length === 0, JSON.stringify(errs));

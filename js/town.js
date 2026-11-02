@@ -38,11 +38,14 @@ function renderTown() {
     any = false;
     for (let t = 1; t <= B.MAX_TIER; t++) { const n = st.bossTickets[t] || 0; if (!n) continue; any = true; h += row(`${t}단계 입장권 ${n}장`, '예고를 보고 보호막', btn('fight', 'boss', t, '도전', SH.canBoss(st, t, now)) + '<span></span>'); }
     if (!any) h += '<p>아직 입장권이 없어요.</p>';
+    const rp = SH.raidParty(st);
+    h += `<h3>레이드 입장권 ${st.raidTickets}장</h3><p>레인보우 샤들링에게서 드물게 나와요. 속성마다 가장 강한 샤들링 1마리씩, 5마리가 함께 싸워요. ${B.RAID_TIER}단계 기준이라 아주 어려워요.</p>`;
+    h += row('레이드', rp ? `${ELS.map(e => ELN[e]).join('·')} 준비됨` : '다섯 속성이 모두 있어야 해요', btn('fight', 'raid', 1, '도전', SH.canRaid(st)) + '<span></span>');
     body.innerHTML = h;
   } else if (tab === 'isle') {
     let h = '<h3>어느 섬으로 갈까요</h3><div class="grid2">';
     for (let s = 1; s <= G.maxStage; s++) h += `<button class="card ${s === G.stage ? 'on' : ''}" type="button" data-act="isle" data-s="${s}"><span>${s}번 섬 · ${MAPS[(s - 1) % MAPS.length].name}</span><small>${SH.islandMobs(s).map(e => ELN[e]).join('·')} ${s}단계 소울${st.cleared[s] ? ' · 정복' : ''}</small></button>`;
-    body.innerHTML = `${h}</div><p>꺼 둔 동안도 고른 섬에서 켜 둔 것과 똑같이 사냥해요. 최대 ${B_.OFFLINE_CAP_SEC / 3600}시간까지 쌓여요.</p>
+    body.innerHTML = `${h}</div><p>사냥 보상은 하루 ${B_.DAILY_KILLS.toLocaleString('ko-KR')}마리이고 못 쓴 만큼 최대 ${B_.CARRY_KILLS.toLocaleString('ko-KR')}마리까지 쌓여요. 다 쓴 뒤와 꺼 둔 동안은 효율 10%예요(방치는 최대 ${B_.OFFLINE_CAP_SEC / 3600}시간).</p>
       <button class="ghost" type="button" data-act="reset">${resetArmed ? '정말 지워요. 한 번 더 누르면 처음부터' : '처음부터 다시 하기'}</button>`;
   } else {
     const main = SH.getMon(st, pick.main), sub = SH.getMon(st, pick.sub);
@@ -150,6 +153,7 @@ function lootChips(l) {
   if (l.gold) chips.push(`<span class="lootchip">${goldText(l.gold)} G</span>`);
   if (l.tickets) chips.push(`<span class="lootchip rare">던전 입장권 ×${l.tickets}</span>`);
   if (l.bossTicket) chips.push('<span class="lootchip rare">레인보우 입장권!</span>');
+  if (l.raidTicket) chips.push('<span class="lootchip rare">레이드 입장권!!</span>');
   (l.levels || []).forEach(v => chips.push(`<span class="lootchip" style="--c:#7dff8a">${v.name} Lv ${v.from}→${v.to}</span>`));
   return chips.join('');
 }
@@ -182,6 +186,21 @@ function showIntro() {
   $('introGo').onclick = () => { SH.tutorialPick(G.st, picked); $('hint').textContent = '샤들링이 알아서 싸워요. 그냥 지켜보세요.'; G.hintT = 8; go(); };
   $('introSkip').onclick = () => { G.st.tut = null; go(); };
   $('intro').hidden = false; refresh();
+}
+const sumOf = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+// 사냥 화면의 목표 한 줄
+function goalText() {
+  const st = G.st;
+  if (G.fight) return '';
+  if (st.tut === 1) return `이 섬의 적 ${G.need}마리를 잡고 보스를 쓰러뜨리세요`;
+  const ready = st.roster.find(m => m.tier < B_.MAX_TIER && m.level >= B_.FUSE_LEVEL[m.tier - 1] && st.roster.some(n => n !== m && SH.fuseCheck(st, m, n).ok));
+  if (ready) return `${ready.name} 합성 가능! 마을로 가세요`;
+  const sm = ELS.flatMap(el => [1, 2, 3, 4, 5].map(t => [el, t, st.souls[el + t] || 0])).filter(x => x[2] >= B_.SOULS_PER_SUMMON);
+  if (sm.length) return `${ELN[sm[0][0]]} ${sm[0][1]}단계 소환 가능!`;
+  const party = st.partyIds.map(id => SH.getMon(st, id)).filter(m => m && m.tier < B_.MAX_TIER && m.level < B_.FUSE_LEVEL[m.tier - 1]).sort((a, b) => b.level / B_.FUSE_LEVEL[b.tier - 1] - a.level / B_.FUSE_LEVEL[a.tier - 1]);
+  if (party[0]) return `${party[0].name} 합성까지 Lv ${party[0].level} / ${B_.FUSE_LEVEL[party[0].tier - 1]}`;
+  if (!st.cleared[st.stage]) return `이 섬의 보스까지 ${Math.max(0, G.need - G.kills)}마리`;
+  return '다음 합성에 쓸 소울을 모아요';
 }
 function showOffline(r) {
   const hours = r.sec >= 3600 ? `${(r.sec / 3600).toFixed(1)}시간` : `${Math.round(r.sec / 60)}분`;
