@@ -49,7 +49,8 @@ function renderTown() {
     const slotCard = (kind, m, label) => { if (m) paints.push([m, {}, 'slot' + kind]); return `<button class="card slot ${slot === kind ? 'on' : ''}" type="button" data-act="slot" data-v="${kind}">${m ? `<canvas data-p="slot${kind}"></canvas><span>${m.name}</span>` : '<div class="empty">+</div>'}<small>${label}</small></button>`; };
     const res = main && sub ? SH.branch(main.tier + 1, main.el, sub.el) : null;
     if (res) paints.push([res, { sil:!G.dex[res.key] }, 'slotres']);
-    let h = `<div class="slots">${slotCard('main', main, '주재료')}<b>+</b>${slotCard('sub', sub, '부재료')}<b>=</b><div class="card slot static">${res ? `<canvas data-p="slotres"></canvas><span>${G.dex[res.key] ? res.name : '???'}</span>` : '<div class="empty">?</div>'}<small>결과</small></div></div>`;
+    const coach = st.tut === 2 ? `<div class="coach">${!main ? '첫 합성! 주재료를 골라 보세요.' : !sub ? '부재료를 고르면 결과가 달라져요. 까만 그림자 중 어느 쪽이 궁금한가요?' : '이번 첫 합성은 꼭 성공해요. 눌러 보세요!'}</div>` : '';
+    let h = coach + `<div class="slots">${slotCard('main', main, '주재료')}<b>+</b>${slotCard('sub', sub, '부재료')}<b>=</b><div class="card slot static">${res ? `<canvas data-p="slotres"></canvas><span>${G.dex[res.key] ? res.name : '???'}</span>` : '<div class="empty">?</div>'}<small>결과</small></div></div>`;
     if (slot === 'main') {
       const list = G.roster.filter(m => m.tier < B_.MAX_TIER).sort((a, b) => b.tier - a.tier || b.level - a.level);
       h += `<h3>주재료 고르기</h3><div class="grid3">${list.map(m => { const need = B_.FUSE_LEVEL[m.tier - 1], ok = m.level >= need; return monCard(m, ok ? 'main' : 'info', (m.id === pick.main ? 'on ' : '') + (ok ? 'ready' : ''), `${m.tier}단계 · Lv ${m.level}${ok ? ' · 가능' : ` / ${need}`}`); }).join('')}</div>`;
@@ -84,8 +85,9 @@ function fuseNow() {
   const main = SH.getMon(G.st, pick.main), sub = SH.getMon(G.st, pick.sub);
   if (!main || !sub) return;
   const preview = SH.branch(main.tier + 1, main.el, sub.el), names = `${main.name} + ${sub.name}`;
-  const seen = G.dex[preview.key], r = SH.attemptFuse(G.st, main.id, sub.id, pick.souls, Math.random);
+  const seen = G.dex[preview.key], tutFuse = G.st.tut === 2, r = SH.attemptFuse(G.st, main.id, sub.id, pick.souls, tutFuse ? () => 0 : Math.random);
   if (r.error) { renderTown(); return; }
+  if (tutFuse) G.st.tut = null;
   saveGame();
   const art = $('revealArt');
   paint(art, preview, { big:true, sil:!seen });
@@ -131,7 +133,8 @@ function rewardText(r) {
 }
 function showReward(title, r) {
   paint($('revealArt'), SH.getMon(G.st, G.partyIds[0]), { big:true }); $('revealArt').className = 'pop';
-  $('revealTitle').textContent = title; $('revealText').textContent = rewardText(r);
+  $('revealTitle').textContent = title; $('revealText').textContent = '';
+  $('revealLoot').innerHTML = lootChips(r);
   $('revealOk').textContent = '받기'; $('revealOk').hidden = false; $('reveal').hidden = false;
   fan(r.bossTicket ? [659, 784, 988, 1319, 1568] : [523, 659, 784, 1047], .08);
 }
@@ -140,13 +143,54 @@ function showFightLost() {
   $('revealTitle').textContent = '졌어요'; $('revealText').textContent = '입장권과 횟수는 그대로예요. 더 키우거나 일행을 바꿔 다시 도전해 보세요.';
   $('revealOk').textContent = '돌아가기'; $('revealOk').hidden = false; $('reveal').hidden = false;
 }
+// 소울은 높은 단계부터, 드문 것은 눈에 띄게
+function lootChips(l) {
+  const ks = Object.keys(l.souls || {}).sort((a, b) => b.slice(-1) - a.slice(-1) || a.localeCompare(b));
+  const chips = ks.map(k => { const el = k.slice(0, -1), t = +k.slice(-1); return `<span class="lootchip ${t >= 3 ? 'rare' : ''}" style="--c:${COL[el]}">${ELN[el]} ${t}단계 ×${l.souls[k]}</span>`; });
+  if (l.gold) chips.push(`<span class="lootchip">${goldText(l.gold)} G</span>`);
+  if (l.tickets) chips.push(`<span class="lootchip rare">던전 입장권 ×${l.tickets}</span>`);
+  if (l.bossTicket) chips.push('<span class="lootchip rare">레인보우 입장권!</span>');
+  (l.levels || []).forEach(v => chips.push(`<span class="lootchip" style="--c:#7dff8a">${v.name} Lv ${v.from}→${v.to}</span>`));
+  return chips.join('');
+}
+function lootLevels(lv) { return Object.keys(lv).map(id => { const m = SH.getMon(G.st, +id); return m && m.level > lv[id] ? { name:m.name, from:lv[id], to:m.level } : null; }).filter(Boolean); }
+function showLoot(title, loot, next) {
+  const l = { souls:loot.souls, gold:G.st.gold - loot.gold0, tickets:loot.tickets, levels:lootLevels(loot.lv) };
+  paint($('revealArt'), SH.getMon(G.st, G.partyIds[0]), { big:true }); $('revealArt').className = 'pop';
+  $('revealTitle').textContent = title;
+  $('revealText').textContent = loot.kills ? `${loot.kills}마리 사냥` : '';
+  $('revealLoot').innerHTML = lootChips(l) || '<span class="lootchip">이번엔 소울이 없었어요</span>';
+  $('revealOk').textContent = '마을로'; $('revealOk').hidden = false;
+  $('revealNext').hidden = !next; $('reveal').hidden = false;
+  fan([523, 659, 784, 1047], .08);
+  resetLoot();
+}
+function afterClear() {
+  const cleared = G.stage, loot = G.loot, hasNext = G.maxStage > cleared;
+  G.stage = G.maxStage; G.needNewMap = true;
+  if (G.st.tut === 1) SH.tutorialFuseReady(G.st);
+  openTown('fuse');
+  showLoot(`${cleared}번 섬 정복!`, loot, hasNext && !G.st.tut);
+  saveGame();
+}
+function showIntro() {
+  G.paused = true; const picked = [], box = $('introPick');
+  ELS.forEach(el => { const m = { el, shape:SH.summonPool(el, 1)[0].shape }, b = document.createElement('button'); b.type = 'button'; b.className = 'card'; b.dataset.el = el; b.innerHTML = `<canvas></canvas><span>${SH.summonPool(el, 1)[0].name}</span><small>${ELN[el]} · ${SHAPE[m.shape].role}</small>`; box.appendChild(b); setTimeout(() => paint(b.querySelector('canvas'), m), 300); });
+  const refresh = () => { box.querySelectorAll('.card').forEach(c => c.classList.toggle('on', picked.includes(c.dataset.el))); $('introGo').disabled = picked.length !== 3; $('introGo').textContent = picked.length === 3 ? '떠나기' : `${3 - picked.length}마리 더 골라 주세요`; };
+  box.addEventListener('click', e => { audio(); const c = e.target.closest('.card'); if (!c) return; const el = c.dataset.el, i = picked.indexOf(el); if (i >= 0) picked.splice(i, 1); else if (picked.length < 3) picked.push(el); refresh(); });
+  const go = () => { $('intro').hidden = true; G.party = []; syncParty(); resetLoot(); G.paused = false; saveGame(); };
+  $('introGo').onclick = () => { SH.tutorialPick(G.st, picked); $('hint').textContent = '샤들링이 알아서 싸워요. 그냥 지켜보세요.'; G.hintT = 8; go(); };
+  $('introSkip').onclick = () => { G.st.tut = null; go(); };
+  $('intro').hidden = false; refresh();
+}
 function showOffline(r) {
   const hours = r.sec >= 3600 ? `${(r.sec / 3600).toFixed(1)}시간` : `${Math.round(r.sec / 60)}분`;
   const souls = Object.keys(r.souls).map(k => `${ELN[k.slice(0, -1)]} ${k.slice(-1)}단계 ${r.souls[k]}개`).join(', ') || '소울 없음';
   const lv = r.levels.map(l => `${l.name} Lv ${l.from}→${l.to}`).join(', ');
   paint($('revealArt'), SH.getMon(G.st, G.partyIds[0]), { big:true }); $('revealArt').className = '';
   $('revealTitle').textContent = '다녀오셨어요!';
-  $('revealText').textContent = `${hours} 동안 ${r.kills}마리 사냥. ${souls}, ${goldText(r.gold)} G.${r.tickets ? ` 입장권 ${r.tickets}장.` : ''}${lv ? ' ' + lv + '.' : ''}`;
+  $('revealText').textContent = `${hours} 동안 ${r.kills}마리 사냥`;
+  $('revealLoot').innerHTML = lootChips({ souls:r.souls, gold:r.gold, tickets:r.tickets, levels:r.levels });
   $('revealOk').textContent = '받기'; $('revealOk').hidden = false; $('reveal').hidden = false;
 }
 $('town').addEventListener('click', e => {
@@ -178,7 +222,9 @@ $('sheetSwap').addEventListener('click', e => {
   SH.setParty(G.st, +b.dataset.swap, +b.dataset.in); saveGame();
   $('sheet').hidden = true; renderTown();
 });
-$('revealOk').onclick = () => { $('reveal').hidden = true; $('revealOk').textContent = '좋아요'; if (!$('town').hidden) renderTown(); };
+const closeReveal = () => { $('reveal').hidden = true; $('revealOk').textContent = '좋아요'; $('revealLoot').innerHTML = ''; $('revealNext').hidden = true; };
+$('revealOk').onclick = () => { closeReveal(); if (!$('town').hidden) renderTown(); };
+$('revealNext').onclick = () => { closeReveal(); depart(); };
 function townScene(t) {
   const c = $('townScene'), x = c.getContext('2d'), m = MAPS[0]; x.imageSmoothingEnabled = false;
   m.sky.forEach((col, i) => { x.fillStyle = col; x.fillRect(0, i * 11, 300, 12); });

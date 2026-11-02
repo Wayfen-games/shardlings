@@ -49,10 +49,20 @@
     <div class="swap" id="sheetSwap"></div>
     <button class="go" id="sheetClose" type="button">닫기</button>
   </div>
+  <div id="intro" hidden>
+    <h1>샤들링</h1>
+    <p>산산조각 난 수호자의 조각이 작은 생명이 되었어요. 서로 이끌려 합쳐지면 어떤 모습이 될까요?</p>
+    <h2>함께 떠날 샤들링 3마리</h2>
+    <div id="introPick" class="grid3"></div>
+    <button class="go" id="introGo" type="button" disabled>3마리를 골라 주세요</button>
+    <button class="ghost" id="introSkip" type="button">설명 없이 바로 시작</button>
+  </div>
   <div id="reveal" hidden>
     <canvas id="revealArt"></canvas>
     <div id="revealTitle"></div>
     <div id="revealText"></div>
+    <div id="revealLoot" class="loot"></div>
+    <button class="go" id="revealNext" type="button" hidden>다음 섬으로</button>
     <button class="go" id="revealOk" type="button" hidden>좋아요</button>
   </div>
 </div>

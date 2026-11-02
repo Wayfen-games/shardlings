@@ -88,4 +88,16 @@ t('보스 하루 10번', () => { const s = fresh(); s.bossTickets[1] = 20; for (
 t('던전·보스 경험치는 1판분', () => { const s = fresh(), m = SH.getMon(s, s.partyIds[0]); SH.winDungeon(s, 1, MON, () => 0); assert.ok(m.level <= 4); });
 t('옛 저장도 불러옴', () => { const s = fresh(); delete s.tickets; delete s.bossTickets; delete s.pickEls; const c = SH.deserialize(JSON.stringify(s)); assert.deepEqual(c.tickets, {}); assert.equal(c.pickEls.length, 3); });
 
+t('튜토리얼: 서로 다른 3속성 필수', () => { const s = fresh(); assert.ok(!SH.tutorialPick(s, ['fire', 'fire', 'water'])); assert.ok(SH.tutorialPick(s, ['fire', 'water', 'light'])); assert.equal(s.roster.length, 3); assert.equal(s.partyIds.length, 3); assert.equal(s.tut, 1); });
+t('어떤 3속성을 골라도 첫 합성 가능', () => {
+  const E = SH.ELS;
+  for (let a = 0; a < 5; a++) for (let b = a + 1; b < 5; b++) for (let c = b + 1; c < 5; c++) {
+    const s = fresh(); SH.tutorialPick(s, [E[a], E[b], E[c]]); SH.tutorialFuseReady(s);
+    const ok = s.roster.some(m => s.roster.some(n => n !== m && m.tier === 1 && SH.fuseCheck(s, m, n).ok));
+    assert.ok(ok, [E[a], E[b], E[c]].join()); assert.equal(s.roster.length, 4); assert.equal(s.tut, 2);
+  }
+});
+t('옛 저장은 튜토리얼 없음', () => { const s = fresh(); delete s.tut; assert.ok(!SH.deserialize(JSON.stringify(s)).tut); });
+t('첫 섬은 짧고 뒤로 갈수록 길다', () => { assert.ok(B.GAUGE_KILLS[0] <= 12); assert.ok(B.GAUGE_KILLS[4] > B.GAUGE_KILLS[0]); });
+
 console.log(`통과 ${passed}`);

@@ -22,17 +22,23 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'OK ' : 'NG '} ${n
   const shot = n => p.screenshot({ path:path.join(OUT, n + '.png') });
   const step = sec => p.evaluate(s => { const { G, update } = window.__sh; G.paused = true; const n = s * 30; for (let i = 0; i < n; i++) { update(1 / 30); if (G.phase !== 'hunt') break; } return G.t; }, sec);
 
-  const a0 = await p.evaluate(() => { const { G } = window.__sh; return { n:G.roster.length, party:G.partyIds.length, stage:G.stage, art:Object.keys(BIG).length }; });
-  check('처음 상태', a0.n === 4 && a0.party === 3, JSON.stringify(a0));
+  check('튜토리얼 시작 화면', await p.isVisible('#intro')); await p.waitForTimeout(300); await shot('0_intro');
+  for (const el of ['fire', 'water', 'grass']) await p.click(`#introPick [data-el=${el}]`);
+  await p.click('#introGo');
+  const a0 = await p.evaluate(() => { const { G } = window.__sh; return { n:G.roster.length, party:G.partyIds.length, stage:G.stage, art:Object.keys(BIG).length, tut:G.st.tut }; });
+  check('처음 상태', a0.n === 3 && a0.party === 3 && a0.tut === 1, JSON.stringify(a0));
+  const first = await p.evaluate(() => { const { G, update } = window.__sh; G.paused = true; const t0 = G.t; let g = 0; while (G.phase === 'hunt' && g++ < 30 * 300) update(1 / 30); return { sec:Math.round(G.t - t0), kills:G.kills, need:G.need }; });
+  check('첫 섬 토벌 시간', first.sec <= 45, JSON.stringify(first));
+  await p.evaluate(() => { const { G } = window.__sh; G.boss = null; G.phase = 'hunt'; G.kills = 0; G.enemies = []; document.getElementById('gaugeBar').classList.remove('boss'); });
 
   // 처치 속도: 켜 둔 효율이 방치 효율과 같은지
   const rate = await p.evaluate(() => {
     const { G, update } = window.__sh; G.paused = true; let k = 0;
-    const r = G.st.gold; const k0 = G.kills, t0 = G.t;
+    const r = G.st.gold; const k0 = G.kills, t0 = G.t; const need = G.need; G.need = 1e9;
     for (let i = 0; i < 30 * 120 && G.phase === 'hunt'; i++) update(1 / 30);
-    return { kills:G.kills - k0, sec:G.t - t0, lv:G.party.map(u => u.mon.level), down:G.party.filter(u => u.down > 0).length, gold:G.gold, souls:G.st.souls };
+    G.need = need; return { kills:G.kills - k0, sec:G.t - t0, lv:G.party.map(u => u.mon.level), down:G.party.filter(u => u.down > 0).length, gold:G.gold, souls:G.st.souls };
   });
-  const spawned = rate.kills - 6; // 시작할 때 미리 깔린 6마리는 뺀다
+  const spawned = rate.kills;
   check('2분 처치 속도', spawned / rate.sec > .25 && spawned / rate.sec <= .35, `${(spawned / rate.sec).toFixed(3)}/초 (방치 ${(1 / 3).toFixed(3)}), ${JSON.stringify(rate)}`);
   await p.evaluate(() => { const { draw, hud } = window.__sh; draw(); hud(); }); await shot('1_hunt');
 
@@ -49,14 +55,18 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'OK ' : 'NG '} ${n
   // 마을로
   await p.evaluate(() => { const { G, update } = window.__sh; G.phaseT = 0; update(1 / 30); }); await p.waitForTimeout(800);
   check('정복 후 마을', await p.isVisible('#town'));
+  check('전리품 화면', (await p.innerText('#revealTitle')).includes('정복') && (await p.innerHTML('#revealLoot')).includes('lootchip')); await shot('1b_loot');
+  check('첫 정복 뒤 4번째와 합성 준비', await p.evaluate(() => { const { G } = window.__sh; return G.roster.length === 4 && G.st.tut === 2; }));
+  await p.click('#revealOk');
   await p.evaluate(() => { const { G } = window.__sh; G.st.gold = 5000; G.roster.forEach(m => { if (m.tier === 1) m.level = 13; }); window.__sh.renderTown(); });
   await p.click('#townBody .card.ready'); await p.click('[data-act=sub]'); await shot('2_fuse');
   const btn = await p.innerText('[data-act=fuse]'); check('합성 버튼', btn.includes('합성하기'), btn);
   const n1 = await p.evaluate(() => { Math.random = () => 0.01; return window.__sh.G.roster.length; });
-  await p.click('[data-act=fuse]'); await p.waitForTimeout(1800); await shot('3_reveal');
+  await p.evaluate(() => { Math.random = () => 0.999; }); await p.click('[data-act=fuse]'); await p.waitForTimeout(1800); await shot('3_reveal');
   const title = await p.innerText('#revealTitle'); check('합성 공개', title.includes('샤들링') || title.length > 0, title);
   await p.click('#revealOk');
-  check('1+1 → 1', await p.evaluate(n => window.__sh.G.roster.length === n - 1, n1));
+  check('튜토리얼 첫 합성은 확정 성공, 1+1 → 1', await p.evaluate(n => window.__sh.G.roster.length === n - 1 && !window.__sh.G.st.tut, n1));
+  await p.evaluate(() => { Math.random = Math.__orig || Math.random; });
   // 소환
   await p.evaluate(() => { const { G } = window.__sh; G.souls.dark1 = 30; }); await p.click('[data-tab=summon]'); await p.click('[data-act=summon][data-el=dark]');
   const lv = await p.evaluate(() => { const m = window.__sh.G.roster[window.__sh.G.roster.length - 1]; return [m.level, m.base]; }); check('소환은 기본 레벨', lv[0] === lv[1], lv.join('/'));
@@ -94,11 +104,16 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'OK ' : 'NG '} ${n
   check('도전 중 나가면 입장권 유지', kept[0] === kept[1] && kept[2], JSON.stringify(kept));
   await p.click('#depart');
 
+  // 맵 보스에게 지면 물러남
+  const ret = await p.evaluate(() => { const { G, update } = window.__sh; G.paused = true; G.kills = G.need - 1; spawnBoss(); G.party.forEach(u => { u.hp = 1; }); knockoutAll = G.party.forEach(u => knockout(u)); return { boss:!!G.boss, phase:G.phase, up:G.party.every(u => u.down <= 0) }; });
+  check('맵 보스 패배는 물러나기', !ret.boss && ret.phase === 'hunt' && ret.up, JSON.stringify(ret));
+
   // 저장과 불러오기
   const before = await p.evaluate(() => { const { G, saveGame } = window.__sh; saveGame(); return JSON.stringify(G.st.roster.map(m => m.key + m.level)); });
   await p.reload({ waitUntil:'load' }); await p.waitForTimeout(400);
   const after = await p.evaluate(() => JSON.stringify(window.__sh.G.st.roster.map(m => m.key + m.level)));
   check('새로고침 후 샤들링 유지', before === after);
+  check('두 번째 접속엔 튜토리얼 없음', !(await p.isVisible('#intro')));
   // 방치 보상
   await p.evaluate(() => { const { G, SH, saveGame } = window.__sh; const raw = JSON.parse(localStorage.getItem(SH.B.SAVE_KEY)); raw.lastSeen = Date.now() - 3600e3; window.onpagehide = null; localStorage.setItem('_probe', JSON.stringify(raw)); });
   const off = await p.evaluate(() => { const { G, SH } = window.__sh; G.st.lastSeen = Date.now() - 3600e3; const g0 = G.gold; const r = SH.claimOffline(G.st, Date.now(), Math.random); return { kills:r.kills, gold:r.gold, souls:Object.keys(r.souls).length }; });

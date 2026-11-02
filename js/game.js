@@ -205,7 +205,7 @@ function mkParty() {
 function loadMap() {
   G.map = (G.stage - 1) % MAPS.length; seed = 7 + G.stage * 3;
   G.world = buildWorld(MAPS[G.map]);
-  G.enemies = []; G.shots = []; G.orbs = []; G.boss = null; G.kills = 0; G.phase = 'hunt'; G.cmd = null;
+  G.enemies = []; G.shots = []; G.orbs = []; G.boss = null; G.kills = 0; G.phase = 'hunt'; G.cmd = null; G.need = SH.B.GAUGE_KILLS[Math.min(G.stage, SH.B.GAUGE_KILLS.length) - 1]; resetLoot();
   const h = { x:cx, y:cy };
   if (!G.hero) mkParty();
   G.hero.x = h.x; G.hero.y = h.y + 14;
@@ -261,6 +261,7 @@ function kill(e) {
   blip('kill', 240, .1, 'triangle', .06, -140);
   if (G.fight) return;
   const r = SH.grantKill(G.st, G.stage, e.el, e.elite, Math.random);
+  trackLoot(r); G.loot.kills++;
   r.drops.forEach(d => { dropOrb(e.x, e.y - 6, d.el, d.tier); if (d.tier >= Math.max(3, G.stage)) rareDrop(d); });
   if (r.ticket) { banner(`입장권!<small>${G.stage}단계 던전 입장권</small>`, 1300); fan([988, 1319]); }
   showLevelUps(r.ups);
@@ -285,7 +286,7 @@ function startWarn() {
   $('gaugeBar').classList.add('boss');
 }
 function spawnBoss() {
-  const pos = randLandNear(G.hero, 60, 90), hp = SH.B.BOSS_HP * es();
+  const pos = randLandNear(G.hero, 60, 90), hp = SH.B.BOSS_HP * es() * (G.fight ? 1 : SH.B.MAP_BOSS_SCALE[Math.min(G.stage, SH.B.MAP_BOSS_SCALE.length) - 1]);
   G.boss = { isBoss:true, el:'rainbow', x:pos.x, y:pos.y, z:0, hp, maxHp:hp, atk:SH.B.BOSS_ATK * es(), state:'chase', st:2.5, cdT:1, hop:0, face:1, flash:0, tx:0, ty:0, born:.5, r:46, sx:0, sy:0 };
   G.phase = 'boss'; shake(5); burst(pos.x, pos.y - 10, '#ffffff', 40, 90, .8); blip('boss', 90, .5, 'sawtooth', .07, 60);
 }
@@ -296,13 +297,14 @@ function killBoss(b) {
     finishFight(true);
     return;
   }
-  G.boss = null; G.phase = 'clear'; G.phaseT = 4; G.slowT = 1.1; G.shots = [];
+  G.boss = null; G.phase = 'clear'; G.phaseT = 2.2; G.slowT = 1.1; G.shots = [];
   for (let i = 0; i < 5; i++) burst(b.x + rnd(-14, 14), b.y - 16 + rnd(-14, 14), `hsl(${i * 72} 90% 70%)`, 22, 110, 1);
   const rb = SH.grantBoss(G.st, G.stage, Math.random);
+  trackLoot(rb);
   rb.drops.slice(0, 40).forEach(d => dropOrb(b.x, b.y - 16, d.el, d.tier));
   showLevelUps(rb.ups);
   shake(7); saveGame();
-  banner(`${G.stage}번 섬 정복!<small>마을로 돌아가요</small>`, 3400);
+  banner(`${G.stage}번 섬 정복!<small>전리품을 모아요</small>`, 2000);
   fan([523, 659, 784, 1047, 1319, 1568], .1);
 }
 function slam(b) {
@@ -321,7 +323,14 @@ function slam(b) {
 }
 function knockout(u) {
   u.hp = 0; u.down = 6; burst(u.x, u.y - 6, '#ffffff', 10, 35);
-  if (G.party.every(p => p.down > 0)) { if (G.boss) G.boss.hp = Math.min(G.boss.maxHp, G.boss.hp + G.boss.maxHp * .1); banner('모두 쓰러졌어요<small>잠시 뒤 일어나요</small>', 1400); }
+  if (G.party.every(p => p.down > 0)) {
+    if (G.fight) return;
+    if (G.boss) { // 맵 보스에게 지면 물러나서 조금 더 사냥한 뒤 다시
+      G.boss = null; G.shots = []; G.phase = 'hunt'; G.kills = Math.max(0, G.need - 3); $('gaugeBar').classList.remove('boss');
+      G.party.forEach(p => { p.down = 0; p.hp = p.maxHp * .6; p.target = null; });
+      banner('물러났어요<small>조금 더 키워서 다시 도전해요</small>', 1800);
+    } else banner('모두 쓰러졌어요<small>잠시 뒤 일어나요</small>', 1400);
+  }
 }
 function useSkill(u, t) {
   u.skT = rnd(6, 8);
@@ -484,7 +493,7 @@ function update(dt) {
 }
 function nextIsland() {
   G.nextPending = true; $('fade').style.opacity = 1;
-  setTimeout(() => { G.nextPending = false; G.stage = G.maxStage; G.needNewMap = true; openTown('fuse'); $('fade').style.opacity = 0; }, 560);
+  setTimeout(() => { G.nextPending = false; afterClear(); $('fade').style.opacity = 0; }, 560);
 }
 
 // ---------- 그리기 ----------
@@ -641,6 +650,16 @@ function hud() {
 
 function endStress() { G.enemies.splice(11); }
 
+// 전리품: 이번 사냥에서 모은 것 [사용자 11-02]
+function resetLoot() {
+  const lv = {}; G.party.forEach(u => { lv[u.mon.id] = u.mon.level; });
+  G.loot = { souls:{}, tickets:0, kills:0, gold0:G.st.gold, lv };
+}
+function trackLoot(r) {
+  r.drops.forEach(d => { const k = d.el + d.tier; G.loot.souls[k] = (G.loot.souls[k] || 0) + 1; });
+  if (r.ticket) G.loot.tickets++;
+}
+
 // 도전: 던전과 레인보우 샤들링. 지면 입장권과 횟수는 그대로 [사용자]
 function startFight(kind, tier) {
   $('town').hidden = true; G.paused = false;
@@ -702,7 +721,8 @@ $('toTown').onclick = () => {
     G.boss = null; G.shots = []; G.phase = 'hunt'; G.kills = G.need - 1; G.party.forEach(u => { u.target = null; });
     $('gaugeBar').classList.remove('boss');
   }
-  openTown('fuse');
+  const loot = G.loot; openTown('fuse');
+  if (loot && loot.kills >= 5) showLoot('사냥 결과', loot);
 };
 
 function resize() {

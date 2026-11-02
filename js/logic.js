@@ -19,10 +19,33 @@
   SH.addMon = addMon;
 
   SH.newState = now => {
-    const st = { v:B.SAVE_VERSION, nextId:1, roster:[], partyIds:[], souls:{}, gold:0, stage:1, maxStage:1, cleared:{}, dex:{}, goldFrac:0, lastSeen:now, tickets:{}, bossTickets:{}, dg:null, pickEls:['fire', 'water', 'grass'] };
+    const st = { v:B.SAVE_VERSION, nextId:1, roster:[], partyIds:[], souls:{}, gold:0, stage:1, maxStage:1, cleared:{}, dex:{}, goldFrac:0, lastSeen:now, tickets:{}, bossTickets:{}, dg:null, pickEls:['fire', 'water', 'grass'], tut:0 };
     SH.ELS.slice(0, B.START_ROSTER).forEach(el => addMon(st, SH.summonPool(el, 1)[0]));
     st.partyIds = st.roster.slice(0, 3).map(m => m.id);
     return st;
+  };
+  // 튜토리얼 [사용자 10-24 7·11번]: 서로 다른 3속성을 고르고, 첫 섬 뒤 4번째를 받아 첫 합성은 확정 성공.
+  // tut: 0 고르기, 1 첫 섬, 2 첫 합성, null 끝 (옛 저장은 null 취급)
+  SH.tutorialPick = (st, els) => {
+    if (!Array.isArray(els) || new Set(els).size !== 3 || !els.every(e => SH.ELS.includes(e))) return false;
+    st.roster = []; st.dex = {};
+    els.forEach(el => addMon(st, SH.summonPool(el, 1)[0]));
+    st.partyIds = st.roster.map(m => m.id);
+    st.tut = 1;
+    return true;
+  };
+  SH.tutorialFourth = st => {
+    const owned = st.roster.map(m => m.el);
+    const main = st.roster.find(m => SH.PAIR[m.el].some(e => owned.includes(e)));
+    const el = SH.ELS.find(e => !owned.includes(e)) || main.el;
+    addMon(st, SH.summonPool(el, 1)[0]);
+    return main;
+  };
+  SH.tutorialFuseReady = st => {
+    SH.tutorialFourth(st);
+    st.roster.forEach(m => { if (st.partyIds.includes(m.id)) { m.level = Math.max(m.level, B.FUSE_LEVEL[0]); m.xp = 0; } });
+    st.gold = Math.max(st.gold, B.FUSE_GOLD[0]);
+    st.tut = 2;
   };
   SH.getMon = (st, id) => st.roster.find(m => m.id === id);
   SH.serialize = st => JSON.stringify(st);

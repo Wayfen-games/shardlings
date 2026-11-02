@@ -20,7 +20,7 @@ resize();
 G.st = loadSave() || SH.newState(Date.now());
 mkParty();
 loadMap();
-claimAway();
+if (G.st.tut === 0) showIntro(); else claimAway();
 if (G.st.cleared[G.st.stage]) G.kills = 0;
 setInterval(() => { if (!document.hidden) saveGame(); }, 10000);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); else claimAway(); });

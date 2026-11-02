@@ -89,4 +89,14 @@ body{background:var(--night);color:var(--cream);font-family:var(--font);-webkit-
 .fightrow small{display:block;font-size:11px;color:var(--dim)}
 .fightrow .ghost{width:auto}
 .ghost[disabled]{opacity:.45;cursor:default}
+#intro{position:absolute;inset:0;background:var(--night);overflow-y:auto;display:grid;align-content:center;gap:12px;padding:18px max(18px,env(safe-area-inset-right,0px)) 18px max(18px,env(safe-area-inset-left,0px));text-align:center}
+#intro h1{font:400 38px var(--font);margin:0;color:var(--shard)}
+#intro h2{font:400 17px var(--font);margin:6px 0 0}
+#intro p{margin:0;font-size:14px;line-height:1.5;color:var(--dim)}
+.coach{background:var(--gold);color:var(--line);padding:9px 11px;font-size:14px;line-height:1.4}
+.loot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:340px}
+.loot:empty{display:none}
+.lootchip{display:inline-flex;align-items:center;gap:5px;background:var(--panel);padding:6px 9px;font-size:14px;font-variant-numeric:tabular-nums}
+.lootchip::before{content:"";width:9px;height:9px;transform:rotate(45deg);background:var(--c,var(--gold));box-shadow:0 0 0 1px var(--line)}
+.lootchip.rare{background:var(--gold);color:var(--line)}
 .ctlrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}

@@ -33,7 +33,8 @@
     KILLS_PER_SEC: 1 / 3,
     OFFLINE_CAP_SEC: 12 * 3600,                    // [제안] 광고 버프 상한과 같은 12시간
     OFFLINE_MIN_SEC: 60,
-    GAUGE_KILLS: 70,
+    GAUGE_KILLS: [10, 18, 26, 34, 42],             // [사용자 11-02] 섬이 초반부터 길다 → 첫 섬은 30초 안팎 [임시]
+    MAP_BOSS_SCALE: [.45, .6, .75, .9, 1],         // [임시] 앞쪽 섬 보스는 짧게
     ELITE_CHANCE: 1 / 3,                           // [사용자] 스테이지 = (n+1)단계 1 + n단계 2의 비율
     DROP_BASE: 0.5, DROP_RATIO: 0.3,               // [사용자] 1단계 0.5, 단계마다 ×0.3
     KILL_SCALE: 7,                                 // [임시] 기존 게임 하루 처치 수 ÷ 실시간 하루 처치 수
